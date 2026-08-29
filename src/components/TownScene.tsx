@@ -383,11 +383,12 @@ const makeBuilding = (plot: TownPlot, post: TownPost | undefined, colorMode: 'da
     floors.push(wall);
     group.add(wall);
 
-    const windowColor = colorMode === 'night' ? 0xe0c37a : 0xd8c58c;
+    const windowColor = colorMode === 'night' ? 0xffc875 : 0xd8c58c;
+    const windowGlow = colorMode === 'night' ? 0.72 : 0.045;
     const y = wall.position.y + 0.015;
-    group.add(makeWindow(-width * 0.24, y, depth / 2 + 0.032, windowColor, 0, floor % 2 === 0));
-    group.add(makeWindow(width * 0.24, y, depth / 2 + 0.032, windowColor, 0, floor % 2 === 1));
-    group.add(makeWindow(width / 2 + 0.032, y, -depth * 0.2, windowColor, Math.PI / 2, plot.walls === 'plaster'));
+    group.add(makeWindow(-width * 0.24, y, depth / 2 + 0.032, windowColor, 0, floor % 2 === 0, windowGlow));
+    group.add(makeWindow(width * 0.24, y, depth / 2 + 0.032, windowColor, 0, floor % 2 === 1, windowGlow));
+    group.add(makeWindow(width / 2 + 0.032, y, -depth * 0.2, windowColor, Math.PI / 2, plot.walls === 'plaster', windowGlow));
 
     const band = new THREE.Mesh(new THREE.BoxGeometry(width * 1.025, 0.045, depth * 1.025), toon({ color: plot.walls === 'timber' ? 0x584435 : 0x766c59 }));
     band.position.y = 0.14 + (floor + 1) * floorHeight - 0.025;
@@ -447,6 +448,13 @@ const makeBuilding = (plot: TownPlot, post: TownPost | undefined, colorMode: 'da
       }
     }
     if (floorPost) group.add(makeArticleMarker(wall.position.y + 0.055, depth / 2 + 0.095, floor + plot.accent));
+  }
+
+  if (colorMode === 'night') {
+    const interiorGlow = new THREE.PointLight(0xffb35c, 0.72, Math.max(2.6, width * 2.2), 2);
+    interiorGlow.position.set(0, 0.58 + floorCount * floorHeight * 0.44, depth * 0.28);
+    interiorGlow.castShadow = false;
+    group.add(interiorGlow);
   }
 
   const roof = makeRoof(plot, width, depth, roofColor, ink);
