@@ -68,6 +68,8 @@ type SpawnNode = { object: THREE.Object3D; delay: number; from: number; duration
 type SwayNode = { object: THREE.Object3D; phase: number; speed: number; amplitude: number; baseX: number; baseZ: number; baseScaleX: number; baseScaleY: number; baseScaleZ: number };
 type WaterNode = { object: THREE.Object3D; material: THREE.Material & { opacity: number }; phase: number; speed: number; amplitude: number; baseX: number; baseZ: number; baseOpacity: number; flowX: number; flowZ: number };
 type SmokeNode = { object: THREE.Mesh; material: THREE.MeshBasicMaterial; phase: number; height: number; drift: number; baseX: number; baseY: number; baseZ: number };
+type PedestrianNode = { object: THREE.Group; route: Point[]; distances: number[]; totalDistance: number; distance: number; direction: 1 | -1; speed: number; phase: number; waitUntil: number; leftLeg: THREE.Object3D; rightLeg: THREE.Object3D; leftArm: THREE.Object3D; rightArm: THREE.Object3D };
+type RainSystem = { group: THREE.LineSegments; positions: Float32Array; velocities: Float32Array; count: number; area: { minX: number; maxX: number; minZ: number; maxZ: number; top: number; bottom: number } };
 
 type BuildingResult = { group: THREE.Group; floors: THREE.Mesh[]; smoke: SmokeNode[] };
 
@@ -181,12 +183,12 @@ const makeContactShadow = (width: number, depth: number, opacity = 0.18) => {
   return shadow;
 };
 
-const makeWindow = (x: number, y: number, z: number, color: number, rotationY = 0, shutters = false) => {
+const makeWindow = (x: number, y: number, z: number, color: number, rotationY = 0, shutters = false, emissiveIntensity = 0.045) => {
   const group = new THREE.Group();
   group.position.set(x, y, z);
   group.rotation.y = rotationY;
   const wood = toon({ color: 0x51483a });
-  const pane = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.21, 0.052), toon({ color, emissive: color, emissiveIntensity: 0.045 }));
+  const pane = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.21, 0.052), toon({ color, emissive: color, emissiveIntensity }));
   pane.position.z = 0.012;
   group.add(pane);
   const frameTop = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.035, 0.068), wood);
@@ -1058,6 +1060,111 @@ const scatterRegion = (region: WorldRegion, seed: string, count: number) => {
   return points;
 };
 
+const routeMetrics = (route: Point[]) => {
+  const distances = [0];
+  for (let index = 1; index < route.length; index += 1) {
+    const previous = route[index - 1];
+    const current = route[index];
+    distances.push(distances[index - 1] + Math.hypot(current.x - previous.x, current.z - previous.z));
+  }
+  return { distances, totalDistance: distances[distances.length - 1] ?? 0 };
+};
+
+const pointAtRouteDistance = (route: Point[], distances: number[], distance: number) => {
+  const clamped = Math.max(0, Math.min(distance, distances[distances.length - 1] ?? 0));
+  let index = 1;
+  while (index < distances.length && distances[index] < clamped) index += 1;
+  const previous = route[Math.max(0, index - 1)] ?? route[0];
+  const current = route[Math.min(route.length - 1, index)] ?? previous;
+  const segmentStart = distances[Math.max(0, index - 1)] ?? 0;
+  const segmentLength = Math.max(0.0001, (distances[index] ?? segmentStart) - segmentStart);
+  const amount = (clamped - segmentStart) / segmentLength;
+  return {
+    point: { x: previous.x + (current.x - previous.x) * amount, z: previous.z + (current.z - previous.z) * amount },
+    tangent: { x: current.x - previous.x, z: current.z - previous.z },
+  };
+};
+
+const makePedestrian = (index: number, night: boolean, rainy: boolean) => {
+  const group = new THREE.Group();
+  const coatColors = [0x536b67, 0x7a5d4e, 0x6d6a52, 0x4d5b70, 0x806b51];
+  const skinColors = [0xd0a27e, 0xb98163, 0xe0b48b];
+  const coat = toon({ color: coatColors[index % coatColors.length] });
+  const skin = toon({ color: skinColors[index % skinColors.length] });
+  const dark = toon({ color: night ? 0x242e2d : 0x3c4039 });
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.13, 3, 6), coat);
+  body.position.y = 0.2;
+  body.scale.set(0.8, 1.05, 0.62);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 6), skin);
+  head.position.y = 0.37;
+  const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, 0.035, 8), dark);
+  hat.position.y = 0.435;
+  const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.15, 0.035), dark);
+  const rightLeg = leftLeg.clone();
+  leftLeg.position.set(-0.035, 0.075, 0);
+  rightLeg.position.set(0.035, 0.075, 0);
+  const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.14, 0.028), coat);
+  const rightArm = leftArm.clone();
+  leftArm.position.set(-0.075, 0.22, 0);
+  rightArm.position.set(0.075, 0.22, 0);
+  leftArm.rotation.z = -0.2;
+  rightArm.rotation.z = 0.2;
+  group.add(body, head, hat, leftLeg, rightLeg, leftArm, rightArm);
+
+  if (rainy) {
+    const umbrella = new THREE.Group();
+    const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), toon({ color: [0x657a83, 0x806f65, 0x697d68][index % 3] }));
+    canopy.position.y = 0.56;
+    canopy.scale.y = 0.56;
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.22, 5), dark);
+    shaft.position.y = 0.46;
+    umbrella.add(canopy, shaft);
+    group.add(umbrella);
+  } else if (night) {
+    const torch = new THREE.Group();
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.16, 5), dark);
+    handle.position.y = 0.25;
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.07, 5), new THREE.MeshBasicMaterial({ color: 0xffc36b }));
+    flame.position.y = 0.36;
+    torch.add(handle, flame);
+    const light = new THREE.PointLight(0xffb35f, 0.32, 1.5, 2);
+    light.position.y = 0.36;
+    torch.add(light);
+    torch.position.x = 0.11;
+    group.add(torch);
+  }
+  group.scale.setScalar(0.72 + (index % 3) * 0.08);
+  return { group, leftLeg, rightLeg, leftArm, rightArm };
+};
+
+const makeRainSystem = (seed: string, colorMode: 'day' | 'night'): RainSystem => {
+  const random = randomFor(`${seed}:rain`);
+  const count = 150;
+  const positions = new Float32Array(count * 6);
+  const velocities = new Float32Array(count);
+  const area = { minX: -30, maxX: 30, minZ: -25, maxZ: 30, top: 18, bottom: 0.1 };
+  for (let index = 0; index < count; index += 1) {
+    const x = area.minX + random() * (area.maxX - area.minX);
+    const y = area.bottom + random() * (area.top - area.bottom);
+    const z = area.minZ + random() * (area.maxZ - area.minZ);
+    const offset = index * 6;
+    positions[offset] = x;
+    positions[offset + 1] = y;
+    positions[offset + 2] = z;
+    positions[offset + 3] = x + 0.06;
+    positions[offset + 4] = y - 0.34;
+    positions[offset + 5] = z + 0.018;
+    velocities[index] = 8.5 + random() * 4.5;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  const material = new THREE.LineBasicMaterial({ color: colorMode === 'night' ? 0x9fc8d0 : 0x7eabb5, transparent: true, opacity: colorMode === 'night' ? 0.42 : 0.3, depthWrite: false });
+  const group = new THREE.LineSegments(geometry, material);
+  group.name = 'weather-rain';
+  group.renderOrder = 20;
+  return { group, positions, velocities, count, area };
+};
+
 const addSpawn = (nodes: SpawnNode[], object: THREE.Object3D, distance: number, reducedMotion: boolean, from = 0.24) => {
   if (!reducedMotion) object.scale.setScalar(from);
   nodes.push({ object, delay: Math.min(distance * 0.018, 0.42), from, duration: 0.46 });
@@ -1163,8 +1270,13 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
     const swayNodes: SwayNode[] = [];
     const waterNodes: WaterNode[] = [];
     const smokeNodes: SmokeNode[] = [];
+    const pedestrianNodes: PedestrianNode[] = [];
+    const weatherHour = Math.floor(Date.now() / 3600000);
+    const isRainy = randomFor(`${layout.seed}:weather:${weatherHour}`)() < 0.3;
+    const rainSystem = isRainy ? makeRainSystem(`${layout.seed}:${weatherHour}`, colorMode) : undefined;
     townLayer.scale.setScalar(reducedMotion ? 1 : 0.72);
     scene.add(townLayer);
+    if (rainSystem) scene.add(rainSystem.group);
 
     const groundDecor = new THREE.Group();
     townLayer.add(groundDecor);
@@ -1470,6 +1582,46 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
       }
     }
     townLayer.add(buildingLayer);
+
+    // A small, deterministic crowd keeps the scene lively without turning the
+    // map into a particle simulation. Routes are the same sampled road
+    // centerlines used by the rendered roads, so walkers never drift off the
+    // street network or into the river.
+    const pedestrianRandom = randomFor(`${layout.seed}:pedestrians:${weatherHour}`);
+    const routeEntries = Object.entries(roadCenterlines);
+    const basePedestrianCount = Math.max(2, Math.min(10, Math.round(layout.plots.length * (0.85 + pedestrianRandom() * 0.7))));
+    const pedestrianCount = Math.max(1, Math.round(basePedestrianCount * (colorMode === 'night' ? 0.58 : 1) * (isRainy ? 0.62 : 1)));
+    for (let index = 0; index < pedestrianCount; index += 1) {
+      const companion = pedestrianNodes[index - 1];
+      const routeEntry = index % 4 === 1 && companion
+        ? undefined
+        : routeEntries[(index * 7 + Math.floor(pedestrianRandom() * routeEntries.length)) % routeEntries.length];
+      const route = companion && index % 4 === 1
+        ? companion.route
+        : samplePath(routeEntry?.[1] ?? roadCenterlines.main, 8);
+      const metrics = routeMetrics(route);
+      if (metrics.totalDistance < 0.5) continue;
+      const person = makePedestrian(index, colorMode === 'night', isRainy);
+      const node: PedestrianNode = {
+        object: person.group,
+        route,
+        distances: metrics.distances,
+        totalDistance: metrics.totalDistance,
+        distance: companion && index % 4 === 1 ? Math.max(0, companion.distance + 0.5) : pedestrianRandom() * metrics.totalDistance,
+        direction: pedestrianRandom() > 0.5 ? 1 : -1,
+        speed: 0.34 + pedestrianRandom() * 0.14,
+        phase: pedestrianRandom() * Math.PI * 2,
+        waitUntil: 0,
+        leftLeg: person.leftLeg,
+        rightLeg: person.rightLeg,
+        leftArm: person.leftArm,
+        rightArm: person.rightArm,
+      };
+      const initial = pointAtRouteDistance(route, metrics.distances, node.distance);
+      person.group.position.set(initial.point.x, 0.08, initial.point.z);
+      townLayer.add(person.group);
+      pedestrianNodes.push(node);
+    }
     interactiveRef.current = interactive;
 
     const resize = () => {
@@ -1549,6 +1701,7 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
     renderer.domElement.addEventListener('click', handleClick);
 
     const startedAt = performance.now();
+    let previousElapsed = 0;
     function animate() {
       if (!isInViewport || !isDocumentVisible) {
         frameRef.current = undefined;
@@ -1569,6 +1722,46 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
           object.rotation.x = baseX + Math.cos(elapsed * speed * 0.72 + phase) * amplitude * 0.42;
           object.scale.set(baseScaleX, baseScaleY * (1 + Math.sin(elapsed * speed * 0.83 + phase * 1.7) * amplitude * 0.7), baseScaleZ);
         });
+        const delta = Math.min(0.05, Math.max(0, elapsed - previousElapsed));
+        previousElapsed = elapsed;
+        pedestrianNodes.forEach((pedestrian) => {
+          if (elapsed >= pedestrian.waitUntil) {
+            pedestrian.distance += pedestrian.speed * delta * pedestrian.direction;
+            if (pedestrian.distance <= 0 || pedestrian.distance >= pedestrian.totalDistance) {
+              pedestrian.direction = pedestrian.direction === 1 ? -1 : 1;
+              pedestrian.distance = Math.max(0.12, Math.min(pedestrian.totalDistance - 0.12, pedestrian.distance));
+              pedestrian.waitUntil = elapsed + 0.8 + ((pedestrian.phase * 10) % 1.6);
+            } else if (Math.sin(elapsed * 0.22 + pedestrian.phase) > 0.985) {
+              // Brief, staggered pauses make pairs look like they are meeting
+              // or chatting instead of moving in lockstep.
+              pedestrian.waitUntil = elapsed + 1.1 + (Math.sin(pedestrian.phase) + 1) * 0.7;
+            }
+          }
+          const location = pointAtRouteDistance(pedestrian.route, pedestrian.distances, pedestrian.distance);
+          pedestrian.object.position.x = location.point.x;
+          pedestrian.object.position.z = location.point.z;
+          pedestrian.object.rotation.y = Math.atan2(location.tangent.x * pedestrian.direction, location.tangent.z * pedestrian.direction);
+          const stride = Math.sin(elapsed * 7.5 + pedestrian.phase) * (elapsed < pedestrian.waitUntil ? 0.03 : 0.34);
+          pedestrian.leftLeg.rotation.x = stride;
+          pedestrian.rightLeg.rotation.x = -stride;
+          pedestrian.leftArm.rotation.x = -stride * 0.7;
+          pedestrian.rightArm.rotation.x = stride * 0.7;
+        });
+        if (rainSystem) {
+          const positionAttribute = rainSystem.group.geometry.getAttribute('position') as THREE.BufferAttribute;
+          for (let index = 0; index < rainSystem.count; index += 1) {
+            const offset = index * 6;
+            const fall = rainSystem.velocities[index] * delta;
+            rainSystem.positions[offset + 1] -= fall;
+            rainSystem.positions[offset + 4] -= fall;
+            if (rainSystem.positions[offset + 1] < rainSystem.area.bottom) {
+              const y = rainSystem.area.top;
+              rainSystem.positions[offset + 1] = y;
+              rainSystem.positions[offset + 4] = y - 0.34;
+            }
+          }
+          positionAttribute.needsUpdate = true;
+        }
         waterNodes.forEach(({ object, material, phase, speed, amplitude, baseX, baseZ, baseOpacity, flowX, flowZ }) => {
           const travel = ((elapsed * speed + phase * 0.13) % 1 + 1) % 1;
           const wave = (travel - 0.5) * 0.24;
