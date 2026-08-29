@@ -70,6 +70,7 @@ type WaterNode = { object: THREE.Object3D; material: THREE.Material & { opacity:
 type SmokeNode = { object: THREE.Mesh; material: THREE.MeshBasicMaterial; phase: number; height: number; drift: number; baseX: number; baseY: number; baseZ: number };
 type PedestrianNode = { object: THREE.Group; route: Point[]; distances: number[]; totalDistance: number; distance: number; direction: 1 | -1; speed: number; phase: number; waitUntil: number; leftLeg: THREE.Object3D; rightLeg: THREE.Object3D; leftArm: THREE.Object3D; rightArm: THREE.Object3D };
 type RainSystem = { group: THREE.LineSegments; positions: Float32Array; velocities: Float32Array; count: number; area: { minX: number; maxX: number; minZ: number; maxZ: number; top: number; bottom: number } };
+type CarriageNode = { object: THREE.Group; route: Point[]; distances: number[]; totalDistance: number; distance: number; direction: 1 | -1; speed: number; wheels: THREE.Object3D[] };
 
 type BuildingResult = { group: THREE.Group; floors: THREE.Mesh[]; smoke: SmokeNode[] };
 
@@ -1145,6 +1146,64 @@ const makePedestrian = (index: number, night: boolean, rainy: boolean) => {
   return { group, leftLeg, rightLeg, leftArm, rightArm };
 };
 
+const makeCarriage = (night: boolean) => {
+  const group = new THREE.Group();
+  const wood = toon({ color: 0x684633 });
+  const woodLight = toon({ color: 0x9a7048 });
+  const dark = toon({ color: 0x3c4039 });
+  const horse = new THREE.Group();
+  const horseBody = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.19, 0.48), toon({ color: 0x765643 }));
+  horseBody.position.set(0, 0.25, 0.52);
+  const horseHead = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.18, 0.2), toon({ color: 0x866248 }));
+  horseHead.position.set(0, 0.35, 0.82);
+  const ear = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.1, 5), dark);
+  ear.position.set(-0.055, 0.48, 0.85);
+  const earOther = ear.clone();
+  earOther.position.x = 0.055;
+  horse.add(horseBody, horseHead, ear, earOther);
+  for (const x of [-0.075, 0.075]) {
+    for (const z of [0.39, 0.66]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.22, 0.045), dark);
+      leg.position.set(x, 0.11, z);
+      horse.add(leg);
+    }
+  }
+  const cart = new THREE.Group();
+  const bed = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.2, 0.48), wood);
+  bed.position.y = 0.34;
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.055, 0.43), woodLight);
+  canopy.position.y = 0.7;
+  const postMaterial = toon({ color: 0x4e382c });
+  for (const x of [-0.28, 0.28]) {
+    for (const z of [-0.17, 0.17]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.45, 0.035), postMaterial);
+      post.position.set(x, 0.52, z);
+      cart.add(post);
+    }
+  }
+  cart.add(bed, canopy);
+  const wheels: THREE.Object3D[] = [];
+  for (const x of [-0.4, 0.4]) {
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.07, 10), dark);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(x, 0.19, -0.1);
+    wheels.push(wheel);
+    cart.add(wheel);
+  }
+  group.add(horse, cart);
+  if (night) {
+    for (const x of [-0.26, 0.26]) {
+      const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.045, 7, 5), new THREE.MeshBasicMaterial({ color: 0xffc36b }));
+      lantern.position.set(x, 0.51, -0.25);
+      const light = new THREE.PointLight(0xffb35f, 0.38, 1.9, 2);
+      light.position.copy(lantern.position);
+      group.add(lantern, light);
+    }
+  }
+  group.scale.setScalar(0.76);
+  return { group, wheels };
+};
+
 const makeRainSystem = (seed: string, colorMode: 'day' | 'night'): RainSystem => {
   const random = randomFor(`${seed}:rain`);
   const count = 150;
@@ -1281,6 +1340,7 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
     const waterNodes: WaterNode[] = [];
     const smokeNodes: SmokeNode[] = [];
     const pedestrianNodes: PedestrianNode[] = [];
+    const carriageNodes: CarriageNode[] = [];
     const weatherHour = Math.floor(Date.now() / 3600000);
     const isRainy = randomFor(`${layout.seed}:weather:${weatherHour}`)() < 0.3;
     const rainSystem = isRainy ? makeRainSystem(`${layout.seed}:${weatherHour}`, colorMode) : undefined;
@@ -1632,6 +1692,27 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
       townLayer.add(person.group);
       pedestrianNodes.push(node);
     }
+    const carriageRandom = randomFor(`${layout.seed}:carriage:${weatherHour}`);
+    if (carriageRandom() < 0.46) {
+      const route = samplePath(roadCenterlines.main, 8);
+      const metrics = routeMetrics(route);
+      const carriage = makeCarriage(colorMode === 'night');
+      const direction: 1 | -1 = carriageRandom() > 0.5 ? 1 : -1;
+      const carriageNode: CarriageNode = {
+        object: carriage.group,
+        route,
+        distances: metrics.distances,
+        totalDistance: metrics.totalDistance,
+        distance: direction === 1 ? 0 : metrics.totalDistance,
+        direction,
+        speed: 0.76 + carriageRandom() * 0.18,
+        wheels: carriage.wheels,
+      };
+      const initial = pointAtRouteDistance(route, metrics.distances, carriageNode.distance);
+      carriage.group.position.set(initial.point.x, 0.1, initial.point.z);
+      townLayer.add(carriage.group);
+      carriageNodes.push(carriageNode);
+    }
     interactiveRef.current = interactive;
 
     const resize = () => {
@@ -1734,6 +1815,16 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
         });
         const delta = Math.min(0.05, Math.max(0, elapsed - previousElapsed));
         previousElapsed = elapsed;
+        carriageNodes.forEach((carriage) => {
+          carriage.distance += carriage.speed * delta * carriage.direction;
+          if (carriage.distance < 0) carriage.distance = carriage.totalDistance;
+          if (carriage.distance > carriage.totalDistance) carriage.distance = 0;
+          const location = pointAtRouteDistance(carriage.route, carriage.distances, carriage.distance);
+          carriage.object.position.x = location.point.x;
+          carriage.object.position.z = location.point.z;
+          carriage.object.rotation.y = Math.atan2(location.tangent.x * carriage.direction, location.tangent.z * carriage.direction);
+          carriage.wheels.forEach((wheel) => { wheel.rotation.x += carriage.direction * carriage.speed * delta / 0.16; });
+        });
         pedestrianNodes.forEach((pedestrian) => {
           if (elapsed >= pedestrian.waitUntil) {
             pedestrian.distance += pedestrian.speed * delta * pedestrian.direction;
