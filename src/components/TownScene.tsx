@@ -451,13 +451,6 @@ const makeBuilding = (plot: TownPlot, post: TownPost | undefined, colorMode: 'da
     if (floorPost) group.add(makeArticleMarker(wall.position.y + 0.055, depth / 2 + 0.095, floor + plot.accent));
   }
 
-  if (colorMode === 'night') {
-    const interiorGlow = new THREE.PointLight(0xffb35c, 0.72, Math.max(2.6, width * 2.2), 2);
-    interiorGlow.position.set(0, 0.58 + floorCount * floorHeight * 0.44, depth * 0.28);
-    interiorGlow.castShadow = false;
-    group.add(interiorGlow);
-  }
-
   const roof = makeRoof(plot, width, depth, roofColor, ink);
   const roofBaseY = 0.14 + floorCount * floorHeight;
   roof.position.y = roofBaseY + (plot.roof === 'gable' ? 0.12 : 0.28);
