@@ -1268,7 +1268,9 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
       texturePlane.position.y = 0.014;
       scene.add(texturePlane);
     }
-    const soilGrain = new THREE.Mesh(new THREE.PlaneGeometry(88, 68, 1, 1), new THREE.MeshBasicMaterial({ color: colorMode === 'night' ? 0x31443b : 0x756f4e, transparent: true, opacity: colorMode === 'night' ? 0.04 : 0.06, depthWrite: false, blending: THREE.MultiplyBlending, premultipliedAlpha: true }));
+    const soilGrainMaterial = new THREE.MeshBasicMaterial({ color: colorMode === 'night' ? 0x31443b : 0x756f4e, transparent: true, opacity: colorMode === 'night' ? 0.04 : 0.06, depthWrite: false, blending: THREE.MultiplyBlending });
+    soilGrainMaterial.premultipliedAlpha = true;
+    const soilGrain = new THREE.Mesh(new THREE.PlaneGeometry(88, 68, 1, 1), soilGrainMaterial);
     soilGrain.rotation.x = -Math.PI / 2;
     soilGrain.position.y = 0.018;
     scene.add(soilGrain);
