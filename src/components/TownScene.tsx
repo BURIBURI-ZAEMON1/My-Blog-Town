@@ -1210,7 +1210,7 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 720 ? 1.25 : 1.75));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = colorMode === 'night' ? 0.96 : 1.04;
@@ -1268,7 +1268,7 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
       texturePlane.position.y = 0.014;
       scene.add(texturePlane);
     }
-    const soilGrain = new THREE.Mesh(new THREE.PlaneGeometry(88, 68, 1, 1), new THREE.MeshBasicMaterial({ color: colorMode === 'night' ? 0x31443b : 0x756f4e, transparent: true, opacity: colorMode === 'night' ? 0.04 : 0.06, depthWrite: false, blending: THREE.MultiplyBlending }));
+    const soilGrain = new THREE.Mesh(new THREE.PlaneGeometry(88, 68, 1, 1), new THREE.MeshBasicMaterial({ color: colorMode === 'night' ? 0x31443b : 0x756f4e, transparent: true, opacity: colorMode === 'night' ? 0.04 : 0.06, depthWrite: false, blending: THREE.MultiplyBlending, premultipliedAlpha: true }));
     soilGrain.rotation.x = -Math.PI / 2;
     soilGrain.position.y = 0.018;
     scene.add(soilGrain);
