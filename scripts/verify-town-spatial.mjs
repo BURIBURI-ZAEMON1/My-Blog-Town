@@ -33,6 +33,28 @@ const ac = { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z };
 const normalY = ab.z * ac.x - ab.x * ac.z;
 assert(normalY > 0, `corridor surface faces downward (normalY=${normalY})`);
 
+const plazaOuterRadius = 1.72;
+const minimumTrafficClearance = plazaOuterRadius + 0.08;
+for (const [routeName, route] of Object.entries(layoutModule.townTravelRoutes)) {
+  const routeSamples = spatial.samplePath(route, 24);
+  const nearestCenterDistance = Math.min(...routeSamples.map((point) => Math.hypot(point.x, point.z)));
+  assert(nearestCenterDistance > minimumTrafficClearance, `${routeName} traffic route crosses the town center (clearance=${nearestCenterDistance.toFixed(3)})`);
+  assert(route.length >= 6, `${routeName} traffic route is not a connected road-to-road route`);
+}
+for (const [index, connector] of layoutModule.townCenterRingConnectors.entries()) {
+  assert(connector.length > 1, `town center connector ${index} is empty`);
+  const connectorSamples = spatial.samplePath(connector, 24);
+  const nearestConnectorDistance = Math.min(...connectorSamples.map((point) => Math.hypot(point.x, point.z)));
+  assert(nearestConnectorDistance > minimumTrafficClearance, `town center connector ${index} crosses the plaza`);
+}
+const ringSamples = spatial.samplePath(layoutModule.townCenterRing, 24);
+const ringMinimumRadius = Math.min(...ringSamples.map((point) => Math.hypot(point.x, point.z)));
+const ringInnerEdge = ringMinimumRadius - layoutModule.townCenterRingWidth / 2;
+assert(ringInnerEdge >= plazaOuterRadius, `town center ring overlaps plaza (inner edge=${ringInnerEdge.toFixed(3)})`);
+assert(ringInnerEdge - plazaOuterRadius < 0.16, `town center ring is not adjacent to plaza (gap=${(ringInnerEdge - plazaOuterRadius).toFixed(3)})`);
+assert(layoutModule.townCenterRoundaboutRadius > plazaOuterRadius, 'roundabout does not surround the plaza');
+assert(layoutModule.townCenterRoundaboutRadius - plazaOuterRadius < 0.7, `roundabout is too far from plaza (gap=${(layoutModule.townCenterRoundaboutRadius - plazaOuterRadius).toFixed(3)})`);
+
 const riverBankPolygon = spatial.corridorPolygon(layoutModule.riverCenterline, (layoutModule.riverWidth + 0.22) / 2);
 const bridgeSegments = spatial.pathSegmentsInsidePolygon(layoutModule.roadCenterlines.west, riverBankPolygon, 24);
 assert(bridgeSegments.length === 1, `expected one contiguous bridge overlap segment, got ${bridgeSegments.length}`);
@@ -130,6 +152,8 @@ for (let index = 0; index < layout.plots.length; index += 1) {
 
 console.log(JSON.stringify({
   corridorNormalY: normalY,
+  townCenterRingInnerEdge: Number(ringInnerEdge.toFixed(3)),
+  townCenterRoundaboutRadius: layoutModule.townCenterRoundaboutRadius,
   bridgeCrossing: crossing,
   bridgeAlignment: Number(alignment.toFixed(3)),
   bridgeEndpoints,

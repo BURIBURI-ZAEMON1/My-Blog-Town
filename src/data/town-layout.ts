@@ -123,6 +123,62 @@ export const roadCenterlines: Record<string, Point[]> = {
 export const roadWidths = { main: 1.72, east: 1.6, west: 1.56, north: 1.64 } as const;
 export const riverWidth = 1.96;
 
+// A narrow loop keeps moving characters on the edge of the central plaza
+// instead of sending them through the well and benches. The first point is
+// the south gate, then the route travels clockwise around the east side to
+// the north gate. The final repeated point closes the rendered corridor.
+export const townCenterRing: Point[] = [
+  { x: 0.31, z: -2.20 },
+  { x: 1.30, z: -1.79 },
+  { x: 2.06, z: -0.75 },
+  { x: 2.20, z: 0.31 },
+  { x: 1.79, z: 1.33 },
+  { x: 0.81, z: 2.06 },
+  { x: -0.31, z: 2.20 },
+  { x: -1.46, z: 1.68 },
+  { x: -2.13, z: 0.57 },
+  { x: -2.13, z: -0.57 },
+  { x: -1.46, z: -1.68 },
+  { x: -0.68, z: -2.10 },
+  { x: 0.31, z: -2.20 },
+];
+export const townCenterRingWidth = 0.66;
+// Visual road disk under the plaza. The plaza is rendered above this disk,
+// while the larger disk edge meets the four existing road branches.
+export const townCenterRoundaboutRadius = 2.28;
+export const townCenterRingConnectors: Point[][] = [[townCenterRing[6], roadCenterlines.north[0]]];
+
+// These are the routes used by pedestrians and the carriage. They reuse the
+// authored road exits but replace the plaza-crossing center sections with the
+// ring's outer arc. Keeping them data-driven also gives the spatial verifier a
+// single source of truth for the movement network.
+export const townTravelRoutes: Record<string, Point[]> = {
+  // South main road -> the east side of the ring -> north main road.
+  main: [
+    ...roadCenterlines.main.slice(0, 4),
+    townCenterRing[0], townCenterRing[1], townCenterRing[2], townCenterRing[3], townCenterRing[4], townCenterRing[5], townCenterRing[6],
+    ...roadCenterlines.main.slice(5),
+  ],
+  // East road -> the north side of the ring -> north road.
+  east: [
+    ...roadCenterlines.east.slice(1).reverse(),
+    townCenterRing[3], townCenterRing[4], townCenterRing[5], townCenterRing[6],
+    roadCenterlines.north[0], ...roadCenterlines.north.slice(1),
+  ],
+  // West road -> the south side of the ring -> south main road.
+  west: [
+    ...roadCenterlines.west.slice(1).reverse(),
+    townCenterRing[9], townCenterRing[10], townCenterRing[11], townCenterRing[0],
+    ...roadCenterlines.main.slice(0, 4).reverse(),
+  ],
+  // North road -> the west side of the ring -> west road.
+  north: [
+    ...roadCenterlines.north.slice(1).reverse(),
+    roadCenterlines.north[0], townCenterRing[6], townCenterRing[7], townCenterRing[8], townCenterRing[9],
+    ...roadCenterlines.west.slice(1),
+  ],
+};
+
 const river: WorldRegion = {
   id: 'river-west',
   kind: 'river',
@@ -153,6 +209,8 @@ const roads: WorldRegion[] = [
   { id: 'road-branch-east', kind: 'road', polygon: corridorPolygon(roadCenterlines.east, roadWidths.east / 2) },
   { id: 'road-branch-west', kind: 'road', polygon: corridorPolygon(roadCenterlines.west, roadWidths.west / 2) },
   { id: 'road-north', kind: 'road', polygon: corridorPolygon(roadCenterlines.north, roadWidths.north / 2) },
+  { id: 'road-town-center-ring', kind: 'road', polygon: corridorPolygon(townCenterRing, townCenterRingWidth / 2) },
+  ...townCenterRingConnectors.map((path, index) => ({ id: `road-town-center-connector-${index}`, kind: 'road' as const, polygon: corridorPolygon(path, townCenterRingWidth / 2) })),
 ];
 
 const landmark: WorldRegion = {

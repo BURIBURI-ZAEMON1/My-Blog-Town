@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { createTownLayout, riverCenterline, riverWidth, roadCenterlines, roadWidths, type TownLayout, type TownPlot, type WorldRegion } from '../data/town-layout';
+import { createTownLayout, riverCenterline, riverWidth, roadCenterlines, roadWidths, townCenterRingConnectors, townCenterRingWidth, townCenterRoundaboutRadius, townTravelRoutes, type TownLayout, type TownPlot, type WorldRegion } from '../data/town-layout';
 import { corridorMeshData, corridorMeshDataFromSamples, corridorPolygon, extendPathEndpoints, pathSegmentsInsidePolygon, samplePath } from '../data/town-spatial';
 import type { ArticleSection } from '../lib/markdown';
 
@@ -68,7 +68,7 @@ type SpawnNode = { object: THREE.Object3D; delay: number; from: number; duration
 type SwayNode = { object: THREE.Object3D; phase: number; speed: number; amplitude: number; baseX: number; baseZ: number; baseScaleX: number; baseScaleY: number; baseScaleZ: number };
 type WaterNode = { object: THREE.Object3D; material: THREE.Material & { opacity: number }; phase: number; speed: number; amplitude: number; baseX: number; baseZ: number; baseOpacity: number; flowX: number; flowZ: number };
 type SmokeNode = { object: THREE.Mesh; material: THREE.MeshBasicMaterial; phase: number; height: number; drift: number; baseX: number; baseY: number; baseZ: number };
-type PedestrianNode = { object: THREE.Group; route: Point[]; distances: number[]; totalDistance: number; distance: number; direction: 1 | -1; speed: number; phase: number; waitUntil: number; leftLeg: THREE.Object3D; rightLeg: THREE.Object3D; leftArm: THREE.Object3D; rightArm: THREE.Object3D };
+type PedestrianNode = { object: THREE.Group; route: Point[]; distances: number[]; totalDistance: number; distance: number; direction: 1 | -1; speed: number; phase: number; leftLeg: THREE.Object3D; rightLeg: THREE.Object3D; leftArm: THREE.Object3D; rightArm: THREE.Object3D };
 type RainSystem = { group: THREE.LineSegments; positions: Float32Array; velocities: Float32Array; count: number; area: { minX: number; maxX: number; minZ: number; maxZ: number; top: number; bottom: number } };
 type CarriageNode = { object: THREE.Group; route: Point[]; distances: number[]; totalDistance: number; distance: number; direction: 1 | -1; speed: number; wheels: THREE.Object3D[] };
 
@@ -1463,6 +1463,23 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
       townLayer.add(makeCorridorSurface(path, width, roadMaterial, 0.072));
     });
 
+    // The center is a filled roundabout rather than a second, floating ring
+    // road. It uses the same material as the main roads, sits below the plaza,
+    // and reaches far enough to overlap every branch without leaving seams.
+    const roundaboutEdge = new THREE.Mesh(new THREE.CircleGeometry(townCenterRoundaboutRadius + 0.16, 36), roadEdgeMaterial);
+    roundaboutEdge.rotation.x = -Math.PI / 2;
+    roundaboutEdge.position.set(0, 0.038, 0);
+    roundaboutEdge.receiveShadow = true;
+    townLayer.add(roundaboutEdge);
+    const roundabout = new THREE.Mesh(new THREE.CircleGeometry(townCenterRoundaboutRadius, 36), roadMaterial);
+    roundabout.rotation.x = -Math.PI / 2;
+    roundabout.position.set(0, 0.073, 0);
+    roundabout.receiveShadow = true;
+    townLayer.add(roundabout);
+    townCenterRingConnectors.forEach((connector) => {
+      townLayer.add(makeCorridorSurface(connector, townCenterRingWidth + 0.18, roadEdgeMaterial, 0.04));
+      townLayer.add(makeCorridorSurface(connector, townCenterRingWidth, roadMaterial, 0.072));
+    });
 
     const junctionMaterial = toon({ color: 0xffffff, map: roadTexture ?? undefined });
     const junctions = [
@@ -1657,7 +1674,7 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
     // centerlines used by the rendered roads, so walkers never drift off the
     // street network or into the river.
     const pedestrianRandom = randomFor(`${layout.seed}:pedestrians:${weatherHour}`);
-    const routeEntries = Object.entries(roadCenterlines);
+    const routeEntries = Object.entries(townTravelRoutes);
     const basePedestrianCount = Math.max(2, Math.min(10, Math.round(layout.plots.length * (0.85 + pedestrianRandom() * 0.7))));
     const pedestrianCount = Math.max(1, Math.round(basePedestrianCount * (colorMode === 'night' ? 0.58 : 1) * (isRainy ? 0.62 : 1)));
     for (let index = 0; index < pedestrianCount; index += 1) {
@@ -1680,7 +1697,6 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
         direction: pedestrianRandom() > 0.5 ? 1 : -1,
         speed: 0.34 + pedestrianRandom() * 0.14,
         phase: pedestrianRandom() * Math.PI * 2,
-        waitUntil: 0,
         leftLeg: person.leftLeg,
         rightLeg: person.rightLeg,
         leftArm: person.leftArm,
@@ -1692,8 +1708,8 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
       pedestrianNodes.push(node);
     }
     const carriageRandom = randomFor(`${layout.seed}:carriage:${weatherHour}`);
-    if (carriageRandom() < 0.46) {
-      const route = samplePath(roadCenterlines.main, 8);
+    if (carriageRandom() < 0.58) {
+      const route = samplePath(townTravelRoutes.main, 8);
       const metrics = routeMetrics(route);
       const carriage = makeCarriage(colorMode === 'night');
       const direction: 1 | -1 = carriageRandom() > 0.5 ? 1 : -1;
@@ -1825,23 +1841,19 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
           carriage.wheels.forEach((wheel) => { wheel.rotation.x += carriage.direction * carriage.speed * delta / 0.16; });
         });
         pedestrianNodes.forEach((pedestrian) => {
-          if (elapsed >= pedestrian.waitUntil) {
-            pedestrian.distance += pedestrian.speed * delta * pedestrian.direction;
-            if (pedestrian.distance <= 0 || pedestrian.distance >= pedestrian.totalDistance) {
-              pedestrian.direction = pedestrian.direction === 1 ? -1 : 1;
-              pedestrian.distance = Math.max(0.12, Math.min(pedestrian.totalDistance - 0.12, pedestrian.distance));
-              pedestrian.waitUntil = elapsed + 0.8 + ((pedestrian.phase * 10) % 1.6);
-            } else if (Math.sin(elapsed * 0.22 + pedestrian.phase) > 0.985) {
-              // Brief, staggered pauses make pairs look like they are meeting
-              // or chatting instead of moving in lockstep.
-              pedestrian.waitUntil = elapsed + 1.1 + (Math.sin(pedestrian.phase) + 1) * 0.7;
-            }
+          // Keep walkers in continuous motion. They only reverse at a route
+          // endpoint, which is outside the visible town area; there are no
+          // random mid-route pauses that can look like a collision or stall.
+          pedestrian.distance += pedestrian.speed * delta * pedestrian.direction;
+          if (pedestrian.distance <= 0 || pedestrian.distance >= pedestrian.totalDistance) {
+            pedestrian.direction = pedestrian.direction === 1 ? -1 : 1;
+            pedestrian.distance = Math.max(0.12, Math.min(pedestrian.totalDistance - 0.12, pedestrian.distance));
           }
           const location = pointAtRouteDistance(pedestrian.route, pedestrian.distances, pedestrian.distance);
           pedestrian.object.position.x = location.point.x;
           pedestrian.object.position.z = location.point.z;
           pedestrian.object.rotation.y = Math.atan2(location.tangent.x * pedestrian.direction, location.tangent.z * pedestrian.direction);
-          const stride = Math.sin(elapsed * 7.5 + pedestrian.phase) * (elapsed < pedestrian.waitUntil ? 0.03 : 0.34);
+          const stride = Math.sin(elapsed * 7.5 + pedestrian.phase) * 0.34;
           pedestrian.leftLeg.rotation.x = stride;
           pedestrian.rightLeg.rotation.x = -stride;
           pedestrian.leftArm.rotation.x = -stride * 0.7;
