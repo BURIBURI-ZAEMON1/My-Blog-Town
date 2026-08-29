@@ -51,8 +51,13 @@ const profileLinkIcon = (name: ProfileLinkIcon) => {
   return <svg className={`profile-link-icon profile-link-icon-${name}`} viewBox="0 0 24 24" aria-hidden="true">{paths[name].map((path, index) => <path d={path} key={index} />)}</svg>;
 };
 
-const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric' });
-const formatDate = (value: string) => dateFormatter.format(new Date(value));
+const formatDate = (value: string) => {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[1].slice(2)}-${match[2]}-${match[3]}`;
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return value;
+  return `${String(date.getFullYear()).slice(-2)}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
 const getScore = (post: TownPost, query: string) => {
   const needle = query.trim().toLowerCase();
   if (!needle) return 0;
