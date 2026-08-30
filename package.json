@@ -9,8 +9,9 @@
     "preview": "astro preview",
     "check": "astro check",
     "verify:spatial": "node scripts/verify-town-spatial.mjs",
-    "verify": "npm run check && npm run build && npm run verify:content && npm run verify:spatial",
-    "verify:content": "node scripts/verify-content.mjs"
+    "verify": "npm run check && npm run build && npm run verify:content && npm run verify:spatial && npm run verify:life",
+    "verify:content": "node scripts/verify-content.mjs",
+    "verify:life": "node scripts/verify-town-life.mjs"
   },
   "dependencies": {
     "@astrojs/react": "6.0.4",

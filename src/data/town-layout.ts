@@ -148,8 +148,8 @@ export const townCenterRingWidth = 0.66;
 export const townCenterRoundaboutRadius = 2.28;
 export const townCenterRingConnectors: Point[][] = [[townCenterRing[6], roadCenterlines.north[0]]];
 
-// These are the routes used by pedestrians and the carriage. They reuse the
-// authored road exits but replace the plaza-crossing center sections with the
+// These are the routes used by pedestrians. They reuse the authored road
+// exits but replace the plaza-crossing center sections with the
 // ring's outer arc. Keeping them data-driven also gives the spatial verifier a
 // single source of truth for the movement network.
 export const townTravelRoutes: Record<string, Point[]> = {

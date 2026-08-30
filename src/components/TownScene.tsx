@@ -2,7 +2,9 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { createTownLayout, riverCenterline, riverWidth, roadCenterlines, roadWidths, townCenterRingConnectors, townCenterRingWidth, townCenterRoundaboutRadius, townTravelRoutes, type TownLayout, type TownPlot, type WorldRegion } from '../data/town-layout';
 import { corridorMeshData, corridorMeshDataFromSamples, corridorPolygon, extendPathEndpoints, pathSegmentsInsidePolygon, samplePath } from '../data/town-spatial';
+import { canSeePoint, makeBuildingVisitRoute, makeDoorPatrolRoute, makeThiefArrivalRoute, makeTownPatrolRoute, planTownPopulation, routeMetrics, type TownPersonBehavior, type TownPersonRole } from '../data/town-life';
 import type { ArticleSection } from '../lib/markdown';
+import { RAIN_BOTTOM, RAIN_SPAN, RAIN_WIND_X, RAIN_WIND_Z, weatherIsRainy } from '../data/town-rain';
 
 export type TownPost = {
   id: string;
@@ -68,10 +70,49 @@ type SpawnNode = { object: THREE.Object3D; delay: number; from: number; duration
 type SwayNode = { object: THREE.Object3D; phase: number; speed: number; amplitude: number; baseX: number; baseZ: number; baseScaleX: number; baseScaleY: number; baseScaleZ: number };
 type WaterNode = { object: THREE.Object3D; material: THREE.Material & { opacity: number }; phase: number; speed: number; amplitude: number; baseX: number; baseZ: number; baseOpacity: number; flowX: number; flowZ: number };
 type SmokeNode = { object: THREE.Mesh; material: THREE.MeshBasicMaterial; phase: number; height: number; drift: number; baseX: number; baseY: number; baseZ: number };
-type PedestrianNode = { object: THREE.Group; route: Point[]; distances: number[]; totalDistance: number; distance: number; direction: 1 | -1; speed: number; phase: number; leftLeg: THREE.Object3D; rightLeg: THREE.Object3D; leftArm: THREE.Object3D; rightArm: THREE.Object3D };
-type RainSystem = { group: THREE.LineSegments; positions: Float32Array; velocities: Float32Array; count: number; area: { minX: number; maxX: number; minZ: number; maxZ: number; top: number; bottom: number } };
-type CarriageNode = { object: THREE.Group; route: Point[]; distances: number[]; totalDistance: number; distance: number; direction: 1 | -1; speed: number; wheels: THREE.Object3D[] };
-
+type PedestrianNode = {
+  object: THREE.Group;
+  route: Point[];
+  distances: number[];
+  totalDistance: number;
+  distance: number;
+  direction: 1 | -1;
+  speed: number;
+  phase: number;
+  role: TownPersonRole;
+  behavior: TownPersonBehavior;
+  interactionGroup?: number;
+  partnerIndex?: number;
+  interactionSide: -1 | 1;
+  interactionUntil: number;
+  interactionCooldownUntil: number;
+  interactionArmed: boolean;
+  interactionDeparted: boolean;
+  reactionUntil: number;
+  dwellUntil: number;
+  focusPoint?: Point;
+  buildingTargets?: [Point, Point];
+  buildingState: 'outside' | 'entering' | 'inside' | 'resident' | 'exiting';
+  buildingStateStartedAt: number;
+  buildingStay: boolean;
+  thiefState: 'none' | 'arriving' | 'lurking' | 'entering' | 'inside' | 'exiting' | 'escaping' | 'escaped';
+  thiefArrivalRoute?: Point[];
+  thiefEscapeRoute?: Point[];
+  thiefPatrolRoute?: Point[];
+  thiefLurkUntil: number;
+  hidden: boolean;
+  buildingStateUntil: number;
+  interactionBlend: number;
+  baseScale: number;
+  setOpacity: (opacity: number) => void;
+  leftLeg: THREE.Object3D;
+  rightLeg: THREE.Object3D;
+  leftArm: THREE.Object3D;
+  rightArm: THREE.Object3D;
+  body: THREE.Object3D;
+  accessory?: THREE.Object3D;
+};
+type RainSystem = { group: THREE.LineSegments; material: THREE.ShaderMaterial; count: number; area: { minX: number; maxX: number; minZ: number; maxZ: number; top: number; bottom: number } };
 type BuildingResult = { group: THREE.Group; floors: THREE.Mesh[]; smoke: SmokeNode[] };
 
 const PALETTE: Record<'day' | 'night', Palette> = {
@@ -501,7 +542,7 @@ const makeBuilding = (plot: TownPlot, post: TownPost | undefined, colorMode: 'da
   } else if (plot.special === 'forge') {
     const forge = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 0.32, 8), toon({ color: 0x514b43 }));
     forge.position.set(width * 0.37, 0.18, -depth * 0.63);
-    const ember = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 0.025, 8), toon({ color: 0xc4663c, emissive: 0xd15632, emissiveIntensity: 0.7 }));
+    const ember = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 0.025, 8), toon({ color: 0xc4663c }));
     ember.position.set(width * 0.37, 0.35, -depth * 0.63);
     const anvilBase = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 0.2, 6), toon({ color: 0x4c504b }));
     anvilBase.position.set(-width * 0.38, 0.11, -depth * 0.65);
@@ -1062,16 +1103,6 @@ const scatterRegion = (region: WorldRegion, seed: string, count: number) => {
   return points;
 };
 
-const routeMetrics = (route: Point[]) => {
-  const distances = [0];
-  for (let index = 1; index < route.length; index += 1) {
-    const previous = route[index - 1];
-    const current = route[index];
-    distances.push(distances[index - 1] + Math.hypot(current.x - previous.x, current.z - previous.z));
-  }
-  return { distances, totalDistance: distances[distances.length - 1] ?? 0 };
-};
-
 const pointAtRouteDistance = (route: Point[], distances: number[], distance: number) => {
   const clamped = Math.max(0, Math.min(distance, distances[distances.length - 1] ?? 0));
   let index = 1;
@@ -1087,16 +1118,38 @@ const pointAtRouteDistance = (route: Point[], distances: number[], distance: num
   };
 };
 
-const makePedestrian = (index: number, night: boolean, rainy: boolean) => {
+const makeOpacitySetter = (object: THREE.Object3D) => {
+  const materials: THREE.Material[] = [];
+  object.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const childMaterials = Array.isArray(child.material) ? child.material : [child.material];
+    childMaterials.forEach((material) => materials.push(material));
+  });
+  return (opacity: number) => {
+    materials.forEach((material) => {
+      material.transparent = opacity < 0.999;
+      material.opacity = opacity;
+      material.depthWrite = opacity > 0.52;
+    });
+  };
+};
+
+const makePedestrian = (role: TownPersonRole, index: number, night: boolean, rainy: boolean) => {
   const group = new THREE.Group();
   const coatColors = [0x536b67, 0x7a5d4e, 0x6d6a52, 0x4d5b70, 0x806b51];
   const skinColors = [0xd0a27e, 0xb98163, 0xe0b48b];
-  const coat = toon({ color: coatColors[index % coatColors.length] });
+  const roleCoat: Record<TownPersonRole, number> = {
+    townsperson: coatColors[index % coatColors.length],
+    traveler: 0x65735f,
+    guard: night ? 0x65777a : 0x596a68,
+    thief: 0x303938,
+  };
+  const coat = toon({ color: roleCoat[role] });
   const skin = toon({ color: skinColors[index % skinColors.length] });
   const dark = toon({ color: night ? 0x242e2d : 0x3c4039 });
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.13, 3, 6), coat);
   body.position.y = 0.2;
-  body.scale.set(0.8, 1.05, 0.62);
+  body.scale.set(role === 'guard' ? 0.94 : 0.8, role === 'thief' ? 0.92 : 1.05, 0.62);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 6), skin);
   head.position.y = 0.37;
   const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, 0.035, 8), dark);
@@ -1112,8 +1165,53 @@ const makePedestrian = (index: number, night: boolean, rainy: boolean) => {
   leftArm.rotation.z = -0.2;
   rightArm.rotation.z = 0.2;
   group.add(body, head, hat, leftLeg, rightLeg, leftArm, rightArm);
+  let accessory: THREE.Object3D | undefined;
 
-  if (rainy) {
+  if (role === 'guard') {
+    const armor = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 0.12), toon({ color: 0x9ba39a }));
+    armor.position.set(0, 0.22, 0.015);
+    const helmet = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, 0.055, 8), toon({ color: 0x78827c }));
+    helmet.position.y = 0.445;
+    const plume = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.075, 5), toon({ color: 0xc1a86a }));
+    plume.position.set(0, 0.51, 0);
+    const spear = new THREE.Group();
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.42, 5), toon({ color: 0x624a36 }));
+    shaft.position.y = 0.25;
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.085, 5), toon({ color: 0xbcc2b6 }));
+    tip.position.y = 0.49;
+    spear.add(shaft, tip);
+    spear.position.x = 0.12;
+    group.add(armor, helmet, plume, spear);
+    accessory = spear;
+  } else if (role === 'traveler') {
+    const backpack = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.09), toon({ color: 0x8a6347 }));
+    backpack.position.set(0, 0.25, -0.075);
+    const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.18, 7), toon({ color: 0xb58b5d }));
+    roll.rotation.z = Math.PI / 2;
+    roll.position.set(0, 0.38, -0.075);
+    const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.012, 0.48, 5), toon({ color: 0x6f513b }));
+    staff.position.set(-0.12, 0.27, 0.02);
+    staff.rotation.z = -0.16;
+    group.add(backpack, roll, staff);
+    accessory = backpack;
+  } else if (role === 'thief') {
+    const hood = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.16, 7), toon({ color: 0x252d2b }));
+    hood.position.y = 0.42;
+    hood.scale.z = 0.78;
+    const mask = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.045, 0.025), toon({ color: 0x1b2322 }));
+    mask.position.set(0, 0.36, 0.058);
+    const satchel = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.12, 0.08), toon({ color: 0x5b493b }));
+    satchel.position.set(-0.09, 0.2, -0.035);
+    group.add(hood, mask, satchel);
+    accessory = hood;
+  } else {
+    const basket = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.08, 7), toon({ color: 0xb48a55 }));
+    basket.position.set(0.105, 0.17, 0.045);
+    group.add(basket);
+    accessory = basket;
+  }
+
+  if (rainy && role !== 'thief') {
     const umbrella = new THREE.Group();
     const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), toon({ color: [0x657a83, 0x806f65, 0x697d68][index % 3] }));
     canopy.position.y = 0.56;
@@ -1122,107 +1220,116 @@ const makePedestrian = (index: number, night: boolean, rainy: boolean) => {
     shaft.position.y = 0.46;
     umbrella.add(canopy, shaft);
     group.add(umbrella);
-  } else if (night) {
+    accessory = umbrella;
+  } else if (night && role !== 'thief') {
     const torch = new THREE.Group();
     const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.16, 5), dark);
     handle.position.y = 0.25;
     const flame = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.07, 5), new THREE.MeshBasicMaterial({ color: 0xffc36b }));
     flame.position.y = 0.36;
     torch.add(handle, flame);
-    const light = new THREE.PointLight(0xffb35f, 0.32, 1.5, 2);
-    light.position.y = 0.36;
-    torch.add(light);
     torch.position.x = 0.11;
     group.add(torch);
+    accessory = torch;
   }
-  group.scale.setScalar(0.72 + (index % 3) * 0.08);
-  return { group, leftLeg, rightLeg, leftArm, rightArm };
-};
-
-const makeCarriage = (night: boolean) => {
-  const group = new THREE.Group();
-  const wood = toon({ color: 0x684633 });
-  const woodLight = toon({ color: 0x9a7048 });
-  const dark = toon({ color: 0x3c4039 });
-  const horse = new THREE.Group();
-  const horseBody = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.19, 0.48), toon({ color: 0x765643 }));
-  horseBody.position.set(0, 0.25, 0.52);
-  const horseHead = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.18, 0.2), toon({ color: 0x866248 }));
-  horseHead.position.set(0, 0.35, 0.82);
-  const ear = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.1, 5), dark);
-  ear.position.set(-0.055, 0.48, 0.85);
-  const earOther = ear.clone();
-  earOther.position.x = 0.055;
-  horse.add(horseBody, horseHead, ear, earOther);
-  for (const x of [-0.075, 0.075]) {
-    for (const z of [0.39, 0.66]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.22, 0.045), dark);
-      leg.position.set(x, 0.11, z);
-      horse.add(leg);
-    }
-  }
-  const cart = new THREE.Group();
-  const bed = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.2, 0.48), wood);
-  bed.position.y = 0.34;
-  const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.055, 0.43), woodLight);
-  canopy.position.y = 0.7;
-  const postMaterial = toon({ color: 0x4e382c });
-  for (const x of [-0.28, 0.28]) {
-    for (const z of [-0.17, 0.17]) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.45, 0.035), postMaterial);
-      post.position.set(x, 0.52, z);
-      cart.add(post);
-    }
-  }
-  cart.add(bed, canopy);
-  const wheels: THREE.Object3D[] = [];
-  for (const x of [-0.4, 0.4]) {
-    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.07, 10), dark);
-    wheel.rotation.z = Math.PI / 2;
-    wheel.position.set(x, 0.19, -0.1);
-    wheels.push(wheel);
-    cart.add(wheel);
-  }
-  group.add(horse, cart);
-  if (night) {
-    for (const x of [-0.26, 0.26]) {
-      const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.045, 7, 5), new THREE.MeshBasicMaterial({ color: 0xffc36b }));
-      lantern.position.set(x, 0.51, -0.25);
-      const light = new THREE.PointLight(0xffb35f, 0.38, 1.9, 2);
-      light.position.copy(lantern.position);
-      group.add(lantern, light);
-    }
-  }
-  group.scale.setScalar(0.76);
-  return { group, wheels };
+  group.scale.setScalar(role === 'guard' ? 0.8 : role === 'traveler' ? 0.78 : role === 'thief' ? 0.74 : 0.72 + (index % 3) * 0.08);
+  group.userData = { role };
+  return { group, body, leftLeg, rightLeg, leftArm, rightArm, accessory, setOpacity: makeOpacitySetter(group) };
 };
 
 const makeRainSystem = (seed: string, colorMode: 'day' | 'night'): RainSystem => {
   const random = randomFor(`${seed}:rain`);
-  const count = 150;
+  // Rain motion is evaluated in the vertex shader. This avoids a fragile
+  // per-frame CPU buffer rewrite and guarantees that every rendered frame
+  // uses a new position, including reduced-motion mode.
+  const count = 420;
   const positions = new Float32Array(count * 6);
-  const velocities = new Float32Array(count);
-  const area = { minX: -30, maxX: 30, minZ: -25, maxZ: 30, top: 18, bottom: 0.1 };
+  const phases = new Float32Array(count * 2);
+  const speeds = new Float32Array(count * 2);
+  const offsets = new Float32Array(count * 2);
+  const xOffsets = new Float32Array(count * 2);
+  const zOffsets = new Float32Array(count * 2);
+  const area = { minX: -34, maxX: 34, minZ: -30, maxZ: 30, top: 21, bottom: RAIN_BOTTOM };
   for (let index = 0; index < count; index += 1) {
     const x = area.minX + random() * (area.maxX - area.minX);
-    const y = area.bottom + random() * (area.top - area.bottom);
+    const y = area.bottom + random() * RAIN_SPAN;
     const z = area.minZ + random() * (area.maxZ - area.minZ);
+    const length = 0.34 + random() * 0.36;
+    const phase = random();
+    const speed = 15 + random() * 8;
+    const vertex = index * 2;
     const offset = index * 6;
+    // Both endpoints share the same wrap anchor. Their small visual slope
+    // is applied after wrapping; wrapping endpoints independently can connect
+    // one endpoint at +34 to the other at -34, producing a screen-wide slash.
     positions[offset] = x;
     positions[offset + 1] = y;
     positions[offset + 2] = z;
-    positions[offset + 3] = x + 0.06;
-    positions[offset + 4] = y - 0.34;
-    positions[offset + 5] = z + 0.018;
-    velocities[index] = 8.5 + random() * 4.5;
+    positions[offset + 3] = x;
+    positions[offset + 4] = y;
+    positions[offset + 5] = z;
+    phases[vertex] = phase;
+    phases[vertex + 1] = phase;
+    speeds[vertex] = speed;
+    speeds[vertex + 1] = speed;
+    offsets[vertex] = 0;
+    offsets[vertex + 1] = -length;
+    xOffsets[vertex] = 0;
+    xOffsets[vertex + 1] = 0.11;
+    zOffsets[vertex] = 0;
+    zOffsets[vertex + 1] = 0.045;
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  const material = new THREE.LineBasicMaterial({ color: colorMode === 'night' ? 0x9fc8d0 : 0x7eabb5, transparent: true, opacity: colorMode === 'night' ? 0.42 : 0.3, depthWrite: false });
+  geometry.setAttribute('rainPhase', new THREE.Float32BufferAttribute(phases, 1));
+  geometry.setAttribute('rainSpeed', new THREE.Float32BufferAttribute(speeds, 1));
+  geometry.setAttribute('rainOffset', new THREE.Float32BufferAttribute(offsets, 1));
+  geometry.setAttribute('rainXOffset', new THREE.Float32BufferAttribute(xOffsets, 1));
+  geometry.setAttribute('rainZOffset', new THREE.Float32BufferAttribute(zOffsets, 1));
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uColor: { value: new THREE.Color(colorMode === 'night' ? 0xb9e5e8 : 0x4f8493) },
+      uOpacity: { value: colorMode === 'night' ? 0.62 : 0.56 },
+    },
+    vertexShader: `
+      attribute float rainPhase;
+      attribute float rainSpeed;
+      attribute float rainOffset;
+      attribute float rainXOffset;
+      attribute float rainZOffset;
+      uniform float uTime;
+      varying float vRainFade;
+      void main() {
+        vec3 transformed = position;
+        float y = mod(position.y - uTime * rainSpeed + rainPhase * ${RAIN_SPAN.toFixed(1)} - ${RAIN_BOTTOM.toFixed(2)}, ${RAIN_SPAN.toFixed(1)}) + ${RAIN_BOTTOM.toFixed(2)};
+        transformed.y = y + rainOffset;
+        // Wrap the line anchor once, then apply endpoint offsets. Do not
+        // modulo each endpoint independently or a boundary crossing becomes
+        // a line segment spanning the entire viewport.
+        transformed.x = mod(position.x + uTime * ${RAIN_WIND_X.toFixed(2)} + 34.0, 68.0) - 34.0 + rainXOffset;
+        transformed.z = mod(position.z + uTime * ${RAIN_WIND_Z.toFixed(2)} + 30.0, 60.0) - 30.0 + rainZOffset;
+        vRainFade = 0.78 + 0.22 * smoothstep(0.0, 1.0, y / ${RAIN_SPAN.toFixed(1)});
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      varying float vRainFade;
+      void main() {
+        gl_FragColor = vec4(uColor, uOpacity * vRainFade);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+  });
   const group = new THREE.LineSegments(geometry, material);
   group.name = 'weather-rain';
   group.renderOrder = 20;
-  return { group, positions, velocities, count, area };
+  group.frustumCulled = false;
+  return { group, material, count, area };
 };
 
 const addSpawn = (nodes: SpawnNode[], object: THREE.Object3D, distance: number, reducedMotion: boolean, from = 0.24) => {
@@ -1332,10 +1439,12 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
     const waterNodes: WaterNode[] = [];
     const smokeNodes: SmokeNode[] = [];
     const pedestrianNodes: PedestrianNode[] = [];
-    const carriageNodes: CarriageNode[] = [];
-    const weatherHour = Math.floor(Date.now() / 3600000);
-    const isRainy = randomFor(`${layout.seed}:weather:${weatherHour}`)() < 0.3;
-    const rainSystem = isRainy ? makeRainSystem(`${layout.seed}:${weatherHour}`, colorMode) : undefined;
+    // Weather is stable for a short time window rather than an entire hour,
+    // so a visitor can actually encounter both clear and rainy scenes while
+    // still keeping the result deterministic for a given town/time slot.
+    const weatherSlot = Math.floor(Date.now() / 900000);
+    const isRainy = weatherIsRainy(layout.seed, weatherSlot);
+    const rainSystem = isRainy ? makeRainSystem(`${layout.seed}:${weatherSlot}`, colorMode) : undefined;
     townLayer.scale.setScalar(reducedMotion ? 1 : 0.72);
     scene.add(townLayer);
     if (rainSystem) scene.add(rainSystem.group);
@@ -1666,61 +1775,140 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
     // map into a particle simulation. Routes are the same sampled road
     // centerlines used by the rendered roads, so walkers never drift off the
     // street network or into the river.
-    const pedestrianRandom = randomFor(`${layout.seed}:pedestrians:${weatherHour}`);
+    const pedestrianRandom = randomFor(`${layout.seed}:pedestrians:${weatherSlot}`);
     const routeEntries = Object.entries(townTravelRoutes);
-    const basePedestrianCount = Math.max(2, Math.min(10, Math.round(layout.plots.length * (0.85 + pedestrianRandom() * 0.7))));
-    const pedestrianCount = Math.max(1, Math.round(basePedestrianCount * (colorMode === 'night' ? 0.58 : 1) * (isRainy ? 0.62 : 1)));
-    for (let index = 0; index < pedestrianCount; index += 1) {
-      const companion = pedestrianNodes[index - 1];
-      const routeEntry = index % 4 === 1 && companion
+    const populationPlan = planTownPopulation({
+      plotCount: layout.plots.length,
+      night: colorMode === 'night',
+      rainy: isRainy,
+      random: pedestrianRandom,
+    });
+    const buildingPlots = layout.plots;
+    const townPatrolRoute = makeTownPatrolRoute(townTravelRoutes, samplePath);
+    const guardPlanIndex = populationPlan.findIndex((plan) => plan.role === 'guard');
+    const thiefPlanIndex = populationPlan.findIndex((plan) => plan.role === 'thief');
+    const securityPlot = thiefPlanIndex >= 0 && buildingPlots.length
+      ? buildingPlots[Math.abs(Math.floor(pedestrianRandom() * buildingPlots.length)) % buildingPlots.length]
+      : undefined;
+    for (let index = 0; index < populationPlan.length; index += 1) {
+      const plan = populationPlan[index];
+      const role = plan.role;
+      const behavior = plan.behavior;
+      const interactionGroup = plan.interactionGroup;
+      const companionCandidate = interactionGroup === undefined
         ? undefined
-        : routeEntries[(index * 7 + Math.floor(pedestrianRandom() * routeEntries.length)) % routeEntries.length];
-      const route = companion && index % 4 === 1
-        ? companion.route
-        : samplePath(routeEntry?.[1] ?? roadCenterlines.main, 8);
+        : pedestrianNodes.find((candidate) => candidate.interactionGroup === interactionGroup);
+      const companion = companionCandidate && (companionCandidate.role === 'townsperson' || companionCandidate.role === 'traveler')
+        ? companionCandidate
+        : undefined;
+      const pairedWithCompanion = companion !== undefined;
+      const targetPlot = (role === 'guard' && securityPlot) || (role === 'thief' && securityPlot)
+        ? securityPlot
+        : buildingPlots[index % Math.max(1, buildingPlots.length)];
+      const routeEntry = routeEntries[(index * 7 + Math.floor(pedestrianRandom() * routeEntries.length)) % routeEntries.length];
+      let route: Point[];
+      let buildingTargets: [Point, Point] | undefined;
+      let thiefArrivalRoute: Point[] | undefined;
+      let thiefEscapeRoute: Point[] | undefined;
+      let thiefPatrolRoute: Point[] | undefined;
+      if (targetPlot && role === 'thief') {
+        // A thief arrives from outside town, lurks at the selected doorway,
+        // then enters and later exits along the same road in the opposite
+        // direction. This makes the event feel like a short story, not a
+        // permanently parked NPC.
+        thiefArrivalRoute = makeThiefArrivalRoute(targetPlot, townTravelRoutes, samplePath, buildingPlots);
+        thiefEscapeRoute = [...thiefArrivalRoute].reverse();
+        thiefPatrolRoute = makeDoorPatrolRoute(targetPlot, 0.24);
+        route = thiefArrivalRoute;
+      } else if (role === 'guard') {
+        // Guards patrol the authored road circuit across the whole town. The
+        // thief event is detected by line-of-sight, not by sharing a doorway.
+        route = townPatrolRoute;
+      } else if (pairedWithCompanion) {
+        route = companion.route;
+      } else if (targetPlot && behavior === 'visit' && buildingPlots.length > 1) {
+        const destination = buildingPlots[(index + 2) % buildingPlots.length] ?? targetPlot;
+        route = makeBuildingVisitRoute(targetPlot, destination, townTravelRoutes, samplePath, buildingPlots);
+        buildingTargets = [
+          { x: targetPlot.x, z: targetPlot.z },
+          { x: destination.x, z: destination.z },
+        ];
+      } else {
+        route = samplePath(routeEntry?.[1] ?? townTravelRoutes.main, 8);
+      }
       const metrics = routeMetrics(route);
       if (metrics.totalDistance < 0.5) continue;
-      const person = makePedestrian(index, colorMode === 'night', isRainy);
+      const person = makePedestrian(role, index, colorMode === 'night', isRainy);
       const node: PedestrianNode = {
         object: person.group,
         route,
         distances: metrics.distances,
         totalDistance: metrics.totalDistance,
-        distance: companion && index % 4 === 1 ? Math.max(0, companion.distance + 0.5) : pedestrianRandom() * metrics.totalDistance,
-        direction: pedestrianRandom() > 0.5 ? 1 : -1,
-        speed: 0.34 + pedestrianRandom() * 0.14,
+        distance: role === 'thief'
+          ? 0
+          : role === 'guard'
+            ? pedestrianRandom() * Math.min(metrics.totalDistance, 0.28)
+          : pairedWithCompanion
+            ? Math.max(0.12, Math.min(metrics.totalDistance - 0.12, companion.distance + 0.22))
+            : pedestrianRandom() * metrics.totalDistance,
+        direction: pairedWithCompanion
+          ? companion.direction
+          : role === 'thief' || role === 'guard' || behavior === 'visit' ? 1 : pedestrianRandom() > 0.5 ? 1 : -1,
+        speed: pairedWithCompanion
+          ? companion.speed
+          : role === 'thief' ? 0.12 + pedestrianRandom() * 0.05 : role === 'guard' ? 0.2 + pedestrianRandom() * 0.08 : role === 'traveler' ? 0.42 + pedestrianRandom() * 0.14 : 0.34 + pedestrianRandom() * 0.14,
         phase: pedestrianRandom() * Math.PI * 2,
+        role,
+        behavior,
+        interactionGroup,
+        interactionSide: index % 2 === 0 ? -1 : 1,
+        interactionUntil: 0,
+        interactionCooldownUntil: 0,
+        interactionArmed: interactionGroup !== undefined,
+        interactionDeparted: false,
+        reactionUntil: 0,
+        dwellUntil: 0,
+        focusPoint: targetPlot ? { x: targetPlot.x, z: targetPlot.z } : undefined,
+        buildingTargets,
+        buildingState: 'outside',
+        buildingStateStartedAt: 0,
+        buildingStateUntil: 0,
+        buildingStay: role === 'townsperson' && behavior === 'visit' && pedestrianRandom() < 0.24,
+        thiefState: role === 'thief' ? 'arriving' : 'none',
+        thiefArrivalRoute,
+        thiefEscapeRoute,
+        thiefPatrolRoute,
+        thiefLurkUntil: 0,
+        hidden: false,
+        interactionBlend: 0,
+        baseScale: person.group.scale.x,
+        setOpacity: person.setOpacity,
         leftLeg: person.leftLeg,
         rightLeg: person.rightLeg,
         leftArm: person.leftArm,
         rightArm: person.rightArm,
+        body: person.body,
+        accessory: person.accessory,
       };
       const initial = pointAtRouteDistance(route, metrics.distances, node.distance);
       person.group.position.set(initial.point.x, 0.08, initial.point.z);
       townLayer.add(person.group);
       pedestrianNodes.push(node);
     }
-    const carriageRandom = randomFor(`${layout.seed}:carriage:${weatherHour}`);
-    if (carriageRandom() < 0.58) {
-      const route = samplePath(townTravelRoutes.main, 8);
-      const metrics = routeMetrics(route);
-      const carriage = makeCarriage(colorMode === 'night');
-      const direction: 1 | -1 = carriageRandom() > 0.5 ? 1 : -1;
-      const carriageNode: CarriageNode = {
-        object: carriage.group,
-        route,
-        distances: metrics.distances,
-        totalDistance: metrics.totalDistance,
-        distance: direction === 1 ? 0 : metrics.totalDistance,
-        direction,
-        speed: 0.76 + carriageRandom() * 0.18,
-        wheels: carriage.wheels,
-      };
-      const initial = pointAtRouteDistance(route, metrics.distances, carriageNode.distance);
-      carriage.group.position.set(initial.point.x, 0.1, initial.point.z);
-      townLayer.add(carriage.group);
-      carriageNodes.push(carriageNode);
-    }
+    const interactionGroups = new Map<number, number[]>();
+    pedestrianNodes.forEach((pedestrian, index) => {
+      if (pedestrian.interactionGroup === undefined) return;
+      const members = interactionGroups.get(pedestrian.interactionGroup) ?? [];
+      members.push(index);
+      interactionGroups.set(pedestrian.interactionGroup, members);
+    });
+    interactionGroups.forEach((members) => {
+      if (members.length !== 2) return;
+      pedestrianNodes[members[0]].partnerIndex = members[1];
+      pedestrianNodes[members[1]].partnerIndex = members[0];
+    });
+    const guardNode = guardPlanIndex >= 0 ? pedestrianNodes.find((pedestrian) => pedestrian.role === 'guard') : undefined;
+    const thiefNode = thiefPlanIndex >= 0 ? pedestrianNodes.find((pedestrian) => pedestrian.role === 'thief') : undefined;
     interactiveRef.current = interactive;
 
     const resize = () => {
@@ -1801,12 +1989,20 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
 
     const startedAt = performance.now();
     let previousElapsed = 0;
+    // A guard can notice the rare thief event only once per scene visit. This
+    // prevents both characters from repeatedly reversing every few seconds.
+    let securityEventTriggered = false;
     function animate() {
       if (!isInViewport || !isDocumentVisible) {
         frameRef.current = undefined;
         return;
       }
       const elapsed = (performance.now() - startedAt) / 1000;
+      const delta = Math.min(0.05, Math.max(0, elapsed - previousElapsed));
+      previousElapsed = elapsed;
+      // Weather is a gameplay/atmosphere simulation, not a decorative spawn
+      // animation. Its shader clock continues even when the user prefers reduced motion.
+      if (rainSystem) rainSystem.material.uniforms.uTime.value = elapsed;
       if (!reducedMotion) {
         const overall = Math.min(1, elapsed / 0.72);
         const overallEase = 1 - (1 - overall) ** 3;
@@ -1821,52 +2017,238 @@ export default function TownScene({ posts, layout = createTownLayout('river-bend
           object.rotation.x = baseX + Math.cos(elapsed * speed * 0.72 + phase) * amplitude * 0.42;
           object.scale.set(baseScaleX, baseScaleY * (1 + Math.sin(elapsed * speed * 0.83 + phase * 1.7) * amplitude * 0.7), baseScaleZ);
         });
-        const delta = Math.min(0.05, Math.max(0, elapsed - previousElapsed));
-        previousElapsed = elapsed;
-        carriageNodes.forEach((carriage) => {
-          carriage.distance += carriage.speed * delta * carriage.direction;
-          if (carriage.distance < 0) carriage.distance = carriage.totalDistance;
-          if (carriage.distance > carriage.totalDistance) carriage.distance = 0;
-          const location = pointAtRouteDistance(carriage.route, carriage.distances, carriage.distance);
-          carriage.object.position.x = location.point.x;
-          carriage.object.position.z = location.point.z;
-          carriage.object.rotation.y = Math.atan2(location.tangent.x * carriage.direction, location.tangent.z * carriage.direction);
-          carriage.wheels.forEach((wheel) => { wheel.rotation.x += carriage.direction * carriage.speed * delta / 0.16; });
-        });
-        pedestrianNodes.forEach((pedestrian) => {
-          // Keep walkers in continuous motion. They only reverse at a route
-          // endpoint, which is outside the visible town area; there are no
-          // random mid-route pauses that can look like a collision or stall.
-          pedestrian.distance += pedestrian.speed * delta * pedestrian.direction;
-          if (pedestrian.distance <= 0 || pedestrian.distance >= pedestrian.totalDistance) {
-            pedestrian.direction = pedestrian.direction === 1 ? -1 : 1;
-            pedestrian.distance = Math.max(0.12, Math.min(pedestrian.totalDistance - 0.12, pedestrian.distance));
+        if (guardNode && thiefNode && !thiefNode.hidden && !securityEventTriggered) {
+          const guardPosition = { x: guardNode.object.position.x, z: guardNode.object.position.z };
+          const thiefPosition = { x: thiefNode.object.position.x, z: thiefNode.object.position.z };
+          const facing = { x: Math.sin(guardNode.object.rotation.y), z: Math.cos(guardNode.object.rotation.y) };
+          const separation = guardNode.object.position.distanceTo(thiefNode.object.position);
+          const visible = canSeePoint(guardPosition, thiefPosition, facing, 6.4, buildingPlots.filter((plot) => Math.hypot(plot.x - thiefPosition.x, plot.z - thiefPosition.z) > 1.25), 140);
+          if (separation < 6.4 && visible) {
+            securityEventTriggered = true;
+            thiefNode.reactionUntil = elapsed + 2.8;
+            guardNode.reactionUntil = elapsed + 2.8;
+            thiefNode.direction = thiefNode.direction === 1 ? -1 : 1;
+            // Make the guard immediately pursue in the thief's escape direction.
+            guardNode.direction = thiefNode.direction;
+            thiefNode.dwellUntil = 0;
+            guardNode.dwellUntil = 0;
           }
-          const location = pointAtRouteDistance(pedestrian.route, pedestrian.distances, pedestrian.distance);
-          pedestrian.object.position.x = location.point.x;
-          pedestrian.object.position.z = location.point.z;
-          pedestrian.object.rotation.y = Math.atan2(location.tangent.x * pedestrian.direction, location.tangent.z * pedestrian.direction);
-          const stride = Math.sin(elapsed * 7.5 + pedestrian.phase) * 0.34;
-          pedestrian.leftLeg.rotation.x = stride;
-          pedestrian.rightLeg.rotation.x = -stride;
-          pedestrian.leftArm.rotation.x = -stride * 0.7;
-          pedestrian.rightArm.rotation.x = stride * 0.7;
-        });
-        if (rainSystem) {
-          const positionAttribute = rainSystem.group.geometry.getAttribute('position') as THREE.BufferAttribute;
-          for (let index = 0; index < rainSystem.count; index += 1) {
-            const offset = index * 6;
-            const fall = rainSystem.velocities[index] * delta;
-            rainSystem.positions[offset + 1] -= fall;
-            rainSystem.positions[offset + 4] -= fall;
-            if (rainSystem.positions[offset + 1] < rainSystem.area.bottom) {
-              const y = rainSystem.area.top;
-              rainSystem.positions[offset + 1] = y;
-              rainSystem.positions[offset + 4] = y - 0.34;
+        }
+        pedestrianNodes.forEach((pedestrian, pedestrianIndex) => {
+          const partnerIndex = pedestrian.partnerIndex ?? -1;
+          const partner = partnerIndex >= 0 ? pedestrianNodes[partnerIndex] : undefined;
+          if (pedestrian.hidden) {
+            pedestrian.setOpacity(0);
+            return;
+          }
+          let buildingBusy = pedestrian.buildingState !== 'outside';
+
+          // Building visits are a small state machine rather than a hard stop:
+          // the visitor walks to the door, fades into the building, remains
+          // inside briefly, then fades back out before continuing the route.
+          if (pedestrian.buildingState === 'entering' && elapsed >= pedestrian.buildingStateUntil) {
+            if (pedestrian.buildingStay && pedestrian.role === 'townsperson') {
+              pedestrian.buildingState = 'resident';
+              pedestrian.buildingStateStartedAt = elapsed;
+              pedestrian.buildingStateUntil = Number.POSITIVE_INFINITY;
+            } else {
+              pedestrian.buildingState = 'inside';
+              pedestrian.buildingStateStartedAt = elapsed;
+              pedestrian.buildingStateUntil = elapsed + (pedestrian.role === 'thief' ? 3.1 + Math.abs(Math.sin(pedestrian.phase)) * 1.1 : 2.2 + Math.abs(Math.sin(pedestrian.phase)) * 0.8);
+              if (pedestrian.role === 'thief') pedestrian.thiefState = 'inside';
+            }
+          } else if (pedestrian.buildingState === 'inside' && elapsed >= pedestrian.buildingStateUntil) {
+            pedestrian.buildingState = 'exiting';
+            pedestrian.buildingStateStartedAt = elapsed;
+            pedestrian.buildingStateUntil = elapsed + 0.52;
+            if (pedestrian.role === 'thief') pedestrian.thiefState = 'exiting';
+          } else if (pedestrian.buildingState === 'exiting' && elapsed >= pedestrian.buildingStateUntil) {
+            if (pedestrian.role === 'thief' && pedestrian.thiefEscapeRoute) {
+              const escapeMetrics = routeMetrics(pedestrian.thiefEscapeRoute);
+              pedestrian.route = pedestrian.thiefEscapeRoute;
+              pedestrian.distances = escapeMetrics.distances;
+              pedestrian.totalDistance = escapeMetrics.totalDistance;
+              pedestrian.distance = 0;
+              pedestrian.direction = 1;
+              pedestrian.thiefState = 'escaping';
+              pedestrian.buildingState = 'outside';
+              pedestrian.buildingStateStartedAt = 0;
+              pedestrian.buildingStateUntil = 0;
+              pedestrian.focusPoint = undefined;
+            } else {
+              pedestrian.buildingState = 'outside';
+              pedestrian.buildingStateStartedAt = 0;
+              pedestrian.buildingStateUntil = 0;
+              pedestrian.focusPoint = undefined;
             }
           }
-          positionAttribute.needsUpdate = true;
-        }
+          buildingBusy = pedestrian.buildingState !== 'outside';
+
+          // A thief waits at the doorway for a while before making the risky
+          // entry. The transition snaps only the route coordinate (door-to-door
+          // routes begin at the exact door), never the rendered position.
+          if (pedestrian.role === 'thief' && pedestrian.thiefState === 'lurking' && elapsed >= pedestrian.thiefLurkUntil && !buildingBusy) {
+            pedestrian.route = pedestrian.thiefPatrolRoute ?? pedestrian.route;
+            const patrolMetrics = routeMetrics(pedestrian.route);
+            pedestrian.distances = patrolMetrics.distances;
+            pedestrian.totalDistance = patrolMetrics.totalDistance;
+            pedestrian.distance = 0;
+            pedestrian.direction = 1;
+            pedestrian.focusPoint = pedestrian.focusPoint ?? { x: 0, z: 0 };
+            pedestrian.buildingState = 'entering';
+            pedestrian.buildingStateStartedAt = elapsed;
+            pedestrian.buildingStateUntil = elapsed + 0.56;
+            pedestrian.thiefState = 'entering';
+            buildingBusy = true;
+          }
+
+          const canTalk = Boolean(!buildingBusy && partner && (pedestrian.role === 'townsperson' || pedestrian.role === 'traveler') && (partner.role === 'townsperson' || partner.role === 'traveler'));
+          const pairDistance = partner ? Math.abs(pedestrian.distance - partner.distance) : Number.POSITIVE_INFINITY;
+
+          // A conversation is a rare, intentional interaction between a
+          // paired villager/traveler. It is triggered only when the pair is
+          // already together, never as a random solo roadside freeze.
+          if (canTalk && partner && pedestrianIndex < partnerIndex && pedestrian.interactionArmed && partner.interactionArmed && elapsed > 1.2 && elapsed >= pedestrian.interactionCooldownUntil && elapsed >= partner.interactionCooldownUntil && pairDistance < 0.42) {
+            const conversationDuration = 2.1 + (Math.sin(pedestrian.phase * 2.3) + 1) * 0.45;
+            pedestrian.interactionUntil = elapsed + conversationDuration;
+            partner.interactionUntil = pedestrian.interactionUntil;
+            pedestrian.interactionCooldownUntil = pedestrian.interactionUntil + 14 + Math.abs(Math.sin(pedestrian.phase)) * 6;
+            partner.interactionCooldownUntil = pedestrian.interactionCooldownUntil;
+            pedestrian.interactionArmed = false;
+            partner.interactionArmed = false;
+            pedestrian.interactionDeparted = false;
+            partner.interactionDeparted = false;
+          }
+
+          const talking = canTalk && partner && pedestrian.interactionUntil > elapsed && partner.interactionUntil > elapsed;
+          // After talking, the pair deliberately leaves in opposite directions.
+          // Once they have genuinely separated and the cooldown has elapsed,
+          // they may meet naturally again later on the shared route.
+          if (canTalk && partner && pedestrianIndex < partnerIndex && !talking && pedestrian.interactionUntil > 0 && !pedestrian.interactionDeparted) {
+            pedestrian.direction = pedestrian.interactionSide;
+            partner.direction = partner.interactionSide;
+            pedestrian.interactionDeparted = true;
+            partner.interactionDeparted = true;
+          }
+          if (canTalk && partner && pedestrianIndex < partnerIndex && pedestrian.interactionDeparted && partner.interactionDeparted && !pedestrian.interactionArmed && elapsed >= pedestrian.interactionCooldownUntil && elapsed >= partner.interactionCooldownUntil && pairDistance > 1.2) {
+            pedestrian.interactionArmed = true;
+            partner.interactionArmed = true;
+            pedestrian.interactionUntil = 0;
+            partner.interactionUntil = 0;
+            pedestrian.interactionDeparted = false;
+            partner.interactionDeparted = false;
+          }
+
+          const reacting = elapsed < pedestrian.reactionUntil;
+          const dwelling = !reacting && pedestrian.dwellUntil > elapsed;
+          if (!talking && !dwelling && !buildingBusy) {
+            // Continuous movement is the default. Stops only happen at a
+            // meaningful destination: a building visit, thief peek, or guard
+            // turn. Guards otherwise keep covering the whole town circuit.
+            const reactionSpeed = reacting
+              ? pedestrian.role === 'thief' ? 2.25 : pedestrian.role === 'guard' ? 1.7 : 1
+              : 1;
+            pedestrian.distance += pedestrian.speed * reactionSpeed * delta * pedestrian.direction;
+            if (pedestrian.distance <= 0 || pedestrian.distance >= pedestrian.totalDistance) {
+              const reachedEnd = pedestrian.direction === 1;
+              pedestrian.distance = Math.max(0.12, Math.min(pedestrian.totalDistance - 0.12, pedestrian.distance));
+              if (pedestrian.role === 'thief' && pedestrian.thiefState === 'arriving' && reachedEnd && pedestrian.thiefPatrolRoute) {
+                const patrolMetrics = routeMetrics(pedestrian.thiefPatrolRoute);
+                pedestrian.route = pedestrian.thiefPatrolRoute;
+                pedestrian.distances = patrolMetrics.distances;
+                pedestrian.totalDistance = patrolMetrics.totalDistance;
+                pedestrian.distance = 0;
+                pedestrian.direction = 1;
+                pedestrian.thiefState = 'lurking';
+                pedestrian.thiefLurkUntil = elapsed + 4.8 + Math.abs(Math.sin(pedestrian.phase)) * 2.8;
+                pedestrian.dwellUntil = 0;
+              } else if (pedestrian.role === 'thief' && pedestrian.thiefState === 'escaping' && reachedEnd) {
+                pedestrian.hidden = true;
+                pedestrian.setOpacity(0);
+              } else if (pedestrian.behavior === 'visit' && pedestrian.buildingTargets) {
+                pedestrian.focusPoint = pedestrian.buildingTargets[reachedEnd ? 1 : 0];
+                pedestrian.buildingState = 'entering';
+                pedestrian.buildingStateStartedAt = elapsed;
+                pedestrian.buildingStateUntil = elapsed + 0.52;
+                // Reverse only after the visit completes visually; keeping the
+                // route coordinate fixed avoids a visible snap at the doorway.
+                pedestrian.direction = reachedEnd ? -1 : 1;
+              } else {
+                pedestrian.direction = pedestrian.direction === 1 ? -1 : 1;
+                pedestrian.dwellUntil = pedestrian.behavior === 'sneak'
+                  ? elapsed + 1.1
+                  : 0;
+              }
+            }
+          }
+
+          // Ease the lateral conversational offset in and out. Previously it
+          // appeared in one frame, which looked like a positional hitch.
+          const blendTarget = talking ? 1 : 0;
+          const blendStep = Math.min(1, delta / (talking ? 0.28 : 0.22));
+          pedestrian.interactionBlend += (blendTarget - pedestrian.interactionBlend) * blendStep;
+          const location = pointAtRouteDistance(pedestrian.route, pedestrian.distances, pedestrian.distance);
+          const tangentLength = Math.hypot(location.tangent.x, location.tangent.z) || 1;
+          const normal = { x: -location.tangent.z / tangentLength, z: location.tangent.x / tangentLength };
+          const lateralOffset = pedestrian.interactionSide * 0.13 * pedestrian.interactionBlend;
+          let visualPoint = { x: location.point.x + normal.x * lateralOffset, z: location.point.z + normal.z * lateralOffset };
+          let visualOpacity = 1;
+          let visualScale = pedestrian.baseScale;
+          if (pedestrian.buildingState !== 'outside' && pedestrian.focusPoint) {
+            const duration = Math.max(0.001, pedestrian.buildingStateUntil - pedestrian.buildingStateStartedAt);
+            const progress = Math.max(0, Math.min(1, (elapsed - pedestrian.buildingStateStartedAt) / duration));
+            const entering = pedestrian.buildingState === 'entering';
+            const exiting = pedestrian.buildingState === 'exiting';
+            const visibility = entering ? 1 - progress : exiting ? progress : 0;
+            const from = location.point;
+            const to = pedestrian.focusPoint;
+            const travel = entering ? progress : exiting ? 1 - progress : 1;
+            visualPoint = { x: from.x + (to.x - from.x) * travel, z: from.z + (to.z - from.z) * travel };
+            visualOpacity = visibility;
+            visualScale = pedestrian.baseScale * (0.84 + visibility * 0.16);
+          }
+          pedestrian.setOpacity(visualOpacity);
+          pedestrian.object.scale.setScalar(visualScale);
+          pedestrian.object.position.x = visualPoint.x;
+          pedestrian.object.position.z = visualPoint.z;
+          if (talking && partner) {
+            pedestrian.object.rotation.y = Math.atan2(partner.object.position.x - pedestrian.object.position.x, partner.object.position.z - pedestrian.object.position.z);
+          } else if (pedestrian.buildingState !== 'outside' && pedestrian.focusPoint) {
+            pedestrian.object.rotation.y = Math.atan2(
+              pedestrian.focusPoint.x - pedestrian.object.position.x,
+              pedestrian.focusPoint.z - pedestrian.object.position.z,
+            );
+          } else if (dwelling && pedestrian.focusPoint) {
+            const scanOffset = pedestrian.behavior === 'patrol' ? Math.sin(elapsed * 1.35 + pedestrian.phase) * 0.24 : 0;
+            pedestrian.object.rotation.y = Math.atan2(
+              pedestrian.focusPoint.x - pedestrian.object.position.x,
+              pedestrian.focusPoint.z - pedestrian.object.position.z,
+            ) + scanOffset;
+          } else {
+            pedestrian.object.rotation.y = Math.atan2(location.tangent.x * pedestrian.direction, location.tangent.z * pedestrian.direction);
+          }
+
+          const purposefulStop = talking || dwelling || pedestrian.buildingState !== 'outside';
+          const strideRate = reacting ? 11.5 : pedestrian.role === 'traveler' ? 8.2 : 7.5;
+          const strideAmount = reacting ? 0.42 : pedestrian.role === 'thief' ? 0.2 : 0.34;
+          const stride = purposefulStop ? 0 : Math.sin(elapsed * strideRate + pedestrian.phase) * strideAmount;
+          pedestrian.leftLeg.rotation.x = stride;
+          pedestrian.rightLeg.rotation.x = -stride;
+          const knocking = dwelling && pedestrian.behavior === 'visit';
+          const peeking = dwelling && pedestrian.behavior === 'sneak';
+          const scanning = dwelling && pedestrian.behavior === 'patrol';
+          pedestrian.leftArm.rotation.x = talking
+            ? Math.sin(elapsed * 4.1 + pedestrian.phase) * 0.22
+            : scanning ? -0.18 : peeking ? 0.16 : -stride * 0.7;
+          pedestrian.rightArm.rotation.x = talking
+            ? Math.cos(elapsed * 3.6 + pedestrian.phase) * 0.3
+            : knocking ? -0.55 + Math.sin(elapsed * 11) * 0.16 : peeking ? -0.22 : stride * 0.7;
+          pedestrian.body.position.y = (pedestrian.role === 'thief' ? 0.185 : 0.2) + (talking ? Math.sin(elapsed * 3 + pedestrian.phase) * 0.012 : Math.sin(elapsed * 2.2 + pedestrian.phase) * (pedestrian.role === 'thief' ? 0.006 : 0.003));
+          pedestrian.body.rotation.z = peeking ? Math.sin(elapsed * 2.4 + pedestrian.phase) * 0.08 : scanning ? Math.sin(elapsed * 1.6 + pedestrian.phase) * 0.025 : 0;
+          if (pedestrian.accessory) {
+            pedestrian.accessory.rotation.z = talking ? Math.sin(elapsed * 3.2 + pedestrian.phase) * 0.045 : Math.sin(elapsed * 1.8 + pedestrian.phase) * (pedestrian.role === 'traveler' ? 0.025 : 0.012);
+          }
+        });
         waterNodes.forEach(({ object, material, phase, speed, amplitude, baseX, baseZ, baseOpacity, flowX, flowZ }) => {
           const travel = ((elapsed * speed + phase * 0.13) % 1 + 1) % 1;
           const wave = (travel - 0.5) * 0.24;
