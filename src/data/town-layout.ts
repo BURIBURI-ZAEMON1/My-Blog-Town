@@ -112,14 +112,16 @@ const corridorPolygon = (centerline: Point[], halfWidth: number): Point[] => {
 export const riverCenterline: Point[] = [
   { x: -18.8, z: -30 }, { x: -15.1, z: -17.4 }, { x: -13.7, z: -12.2 }, { x: -12.0, z: -8.4 },
   { x: -11.5, z: -4.4 }, { x: -10.8, z: -0.7 }, { x: -9.2, z: 3.6 }, { x: -8.2, z: 8.0 },
-  { x: -7.3, z: 13.8 }, { x: -5.6, z: 22.5 }, { x: -5.2, z: 30 },
+  { x: -7.3, z: 13.8 }, { x: -8.8, z: 22.5 }, { x: -10.0, z: 32 },
 ].map(point => ({ x: point.x + 3.0, z: point.z }));
 
 export const roadCenterlines: Record<string, Point[]> = {
-  main: [{ x: -0.7, z: -30 }, { x: 0.15, z: -15 }, { x: 0.3, z: -10.5 }, { x: 0.8, z: -6 }, { x: 0.35, z: -1.8 }, { x: 0.2, z: 2.5 }, { x: -0.5, z: 7.2 }, { x: -1.65, z: 11.4 }, { x: -2.4, z: 30 }],
-  east: [{ x: 0.1, z: 0.1 }, { x: 3.7, z: 0.4 }, { x: 7.6, z: 1.2 }, { x: 11.4, z: 2.2 }, { x: 15, z: 3.8 }, { x: 24, z: 7.2 }],
-  west: [{ x: -0.2, z: 0 }, { x: -3.5, z: -1.1 }, { x: -6.9, z: -2.8 }, { x: -10.2, z: -4.5 }, { x: -13.4, z: -6.6 }, { x: -23, z: -10 }],
-  north: [{ x: -0.8, z: 4.2 }, { x: 1.1, z: 6.3 }, { x: 3.5, z: 8.7 }, { x: 5.8, z: 11.2 }, { x: 7.2, z: 13.8 }, { x: 12, z: 22 }],
+  main: [{ x: -0.7, z: -36 }, { x: 0.15, z: -15 }, { x: 0.3, z: -10.5 }, { x: 0.8, z: -6 }, { x: 0.35, z: -1.8 }, { x: 0.2, z: 2.5 }, { x: -0.5, z: 7.2 }, { x: -1.65, z: 11.4 }, { x: -2.4, z: 36 }],
+  // Branch roads overshoot the board so their paved surface is clipped by
+  // the diorama edge instead of stopping in the field.
+  east: [{ x: 0.1, z: 0.1 }, { x: 3.7, z: 0.4 }, { x: 7.6, z: 1.2 }, { x: 11.4, z: 2.2 }, { x: 15, z: 3.8 }, { x: 38, z: 11.8 }],
+  west: [{ x: -0.2, z: 0 }, { x: -3.5, z: -1.1 }, { x: -6.9, z: -2.8 }, { x: -10.2, z: -4.5 }, { x: -13.4, z: -6.6 }, { x: -38, z: -14.2 }],
+  north: [{ x: -0.8, z: 4.2 }, { x: 1.1, z: 6.3 }, { x: 3.5, z: 8.7 }, { x: 5.8, z: 11.2 }, { x: 7.2, z: 13.8 }, { x: 14.8, z: 34 }],
 };
 
 export const roadWidths = { main: 1.72, east: 1.6, west: 1.56, north: 1.64 } as const;

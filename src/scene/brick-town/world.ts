@@ -36,10 +36,21 @@ export function buildWorld(scene: Scene, layout: TownLayout) {
   kit.box(centerX,-0.24,0,width,0.12,depth,C.sand);
   kit.box(centerX,-0.10,0,width,0.16,depth,C.pine);
   const greens = [C.green, C.green, C.green, C.moss, C.leaf];
+  // Keep the bridge as the only intentional road-over-water crossing. The
+  // road network still reserves the full corridor for layout/citizens, but
+  // terrain tiles render water first everywhere except the bridge deck.
+  const bridge = findPathIntersection(riverCenterline,roadCenterlines.west);
+  const isBridgeDeck = (p: Point, clearance = 0) => {
+    if (!bridge) return false;
+    const dx = p.x - bridge.x, dz = p.z - bridge.z;
+    const c = Math.cos(bridge.rotationY), s = Math.sin(bridge.rotationY);
+    const along = dx * c - dz * s, across = dx * s + dz * c;
+    return Math.abs(along) <= 2.2 + clearance && Math.abs(across) <= roadWidths.west / 2 + 0.16 + clearance;
+  };
   // Tile masks, picking, navigation and building occupation all use world X/Z.
   for (let x = BOARD.minX+S; x < BOARD.maxX; x+=S*2) for (let z=BOARD.minZ+S;z<BOARD.maxZ;z+=S*2) {
     const p = {x,z}, road = isRoad(p), wet = isWater(p), house = inHouse(p,0.2);
-    if (wet && !road) {
+    if (wet && !isBridgeDeck(p,0.08)) {
       kit.brick(x,-0.10,z,2,2,rand()<0.25?C.waterLight:rand()<0.5?C.water:C.waterDeep,H/3,false);
       if (rand()<0.16) kit.box(x,0.008,z,S*1.4,0.024,S*0.13,'#abdadd');
     } else if (road) {
@@ -51,7 +62,6 @@ export function buildWorld(scene: Scene, layout: TownLayout) {
     }
   }
   // Bridge built in a single local frame; its posts and deck share the same transform.
-  const bridge = findPathIntersection(riverCenterline,roadCenterlines.west);
   if (bridge) {
     const angle=bridge.rotationY, c=Math.cos(angle),s=Math.sin(angle);
     for(let i=-5;i<=5;i++) {
@@ -94,11 +104,16 @@ export function buildWorld(scene: Scene, layout: TownLayout) {
     const lightKit=new BrickKit(scene); lightKit.box(p.x,1.4,p.z,0.17,0.16,0.17,C.yellow);
     lamps.push(...lightKit.flush('lamp'));
   }
-  // Trees are layered leaf plates, not low-poly spheres. Deterministic occupancy
-  // checks include the entire crown radius; decorative objects never occupy a plot.
+  // Trees and colourful low props share one occupancy list. Every entry is
+  // checked against reserved article lots, roads, water and fixed entities,
+  // so the extra colour never leaks into a future building footprint.
   const decor: {x:number;z:number;radius:number}[]=[];
+  const canPlaceDecor = (p: Point, radius: number, gap = 0.18) =>
+    !isRoad(p, radius + 0.18) && !isWater(p, radius + 0.12) && !inHouse(p, radius + 0.10)
+    && !inEntity(p, radius + 0.08) && Math.hypot(p.x,p.z)>3.2
+    && !decor.some(t=>Math.hypot(t.x-p.x,t.z-p.z)<t.radius+radius+gap);
   function tree(x:number,z:number,size:number,autumn:boolean) {
-    const leaf=autumn?C.yellow:C.leaf, shade=autumn?'#cb7d31':C.pine;
+    const leaf=autumn?C.yellow:C.leaf, shade=autumn?C.coral:C.pine;
     kit.brick(x,0.09,z,1,1,C.brown,H*4,false);
     for(let level=0;level<4;level++) {
       const count=[3,4,3,2][level],y=0.70+level*H*0.9;
@@ -110,13 +125,38 @@ export function buildWorld(scene: Scene, layout: TownLayout) {
     kit.brick(x,1.5,z,1,1,leaf,H,true);
   }
   let attempts=0;
-  while(decor.length<180&&attempts++<7000) {
+  while(decor.filter(item=>item.radius>=0.6).length<150&&attempts++<9000) {
     const x=BOARD.minX+1+rand()*(width-2),z=BOARD.minZ+1+rand()*(depth-2),p={x,z};
-    if(isRoad(p,0.95)||isWater(p,0.95)||inHouse(p,1.0)||inEntity(p,0.8)||Math.hypot(x,z)<3.2)continue;
-    if(decor.some(t=>Math.hypot(t.x-x,t.z-z)<1.3))continue;
+    const radius=0.72;
+    if(!canPlaceDecor(p,radius,0.22))continue;
     const inForest=layout.regions.some(r=>r.kind==='forest'&&pointInPolygon(p,r.polygon));
-    if(!inForest&&rand()>0.32)continue;
-    decor.push({x,z,radius:0.72});tree(x,z,1,rand()<0.13);
+    if(!inForest&&rand()>0.38)continue;
+    decor.push({x,z,radius});tree(x,z,0.95+rand()*0.12,rand()<0.16);
+  }
+  // Coloured LEGO flower clusters, planters and tiny crates break up the
+  // expanded green field without introducing unrelated clickable buildings.
+  const accentColors=[C.coral,C.red,C.blue,C.teal,C.yellow,C.cream,C.navy];
+  const placeAccent=(x:number,z:number,index:number) => {
+    const accent=accentColors[index%accentColors.length];
+    if(index%3===0) {
+      kit.brick(x,0.06,z,1,1,C.green,H/3,false);
+      kit.cylinder(x,0.27,z,0.055,0.25,C.leaf);
+      kit.cylinder(x,0.43,z,0.18,0.07,accent);
+      kit.cylinder(x+0.11,0.39,z+0.04,0.12,0.06,accent);
+    } else if(index%3===1) {
+      kit.brick(x,0.07,z,1,1,accent,H/3,true);
+      kit.brick(x,0.29,z,1,1,index%2?C.ivory:C.yellow,H/3,false);
+    } else {
+      kit.brick(x,0.07,z,1,1,accent,H/3,false);
+      kit.box(x,0.31,z,0.18,0.17,0.18,index%2?C.ivory:C.yellow);
+    }
+  };
+  let accentAttempts=0, accentsPlaced=0;
+  while(accentsPlaced<170&&accentAttempts++<14000) {
+    const x=BOARD.minX+0.7+rand()*(width-1.4),z=BOARD.minZ+0.7+rand()*(depth-1.4),p={x,z};
+    const radius=0.27;
+    if(!canPlaceDecor(p,radius,0.10))continue;
+    decor.push({x,z,radius});placeAccent(x,z,accentsPlaced++);
   }
   for(const e of layout.entities.filter(e=>e.kind==='fence')) {
     const angle=e.rotation??0,c=Math.cos(angle),s=Math.sin(angle);
@@ -137,13 +177,6 @@ export function buildWorld(scene: Scene, layout: TownLayout) {
       kit.brick(x,0.08,z,1,1,C.brown,H/3,false);
       kit.cylinder(x,0.23,z,0.12,0.15,'#d97732');kit.brick(x,0.31,z,1,1,C.leaf,H/3,false);
     }
-  }
-  // Individual flowers and boulders at checked, stable positions.
-  for(let i=0;i<160;i++) {
-    const x=BOARD.minX+0.6+rand()*(width-1.2),z=BOARD.minZ+0.6+rand()*(depth-1.2),p={x,z};
-    if(isRoad(p,0.4)||isWater(p,0.35)||inHouse(p,0.5)||inEntity(p,0.2)||decor.some(t=>Math.hypot(t.x-x,t.z-z)<0.65))continue;
-    if(i%3===0)kit.brick(x,0.1,z,1,1,C.road,H,true);
-    else {kit.cylinder(x,0.22,z,0.055,0.27,C.pine);kit.cylinder(x,0.39,z,0.16,0.055,i%2?C.ivory:C.yellow);}
   }
   // Empty article lots are collision-only reservations. They intentionally
   // use the same ground as the rest of the diorama and receive no special

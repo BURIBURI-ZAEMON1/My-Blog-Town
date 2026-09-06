@@ -55,6 +55,31 @@ assert(ringInnerEdge - plazaOuterRadius < 0.16, `town center ring is not adjacen
 assert(layoutModule.townCenterRoundaboutRadius > plazaOuterRadius, 'roundabout does not surround the plaza');
 assert(layoutModule.townCenterRoundaboutRadius - plazaOuterRadius < 0.7, `roundabout is too far from plaza (gap=${(layoutModule.townCenterRoundaboutRadius - plazaOuterRadius).toFixed(3)})`);
 
+const board = { minX: -34.56, maxX: 34.56, minZ: -28.80, maxZ: 28.80 };
+assert(layoutModule.roadCenterlines.east.at(-1).x > board.maxX, 'east road does not overshoot the board edge');
+assert(layoutModule.roadCenterlines.west.at(-1).x < board.minX, 'west road does not overshoot the board edge');
+assert(layoutModule.roadCenterlines.north.at(-1).z > board.maxZ, 'north road does not overshoot the board edge');
+
+const distanceToPath = (point, samples) => {
+  let best = Infinity;
+  for (let index = 1; index < samples.length; index += 1) {
+    const a = samples[index - 1];
+    const b = samples[index];
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.z - a.z) * dz) / (dx * dx + dz * dz || 1)));
+    best = Math.min(best, Math.hypot(point.x - a.x - t * dx, point.z - a.z - t * dz));
+  }
+  return best;
+};
+const riverSamples = spatial.samplePath(layoutModule.riverCenterline, 32);
+for (const roadName of ['main', 'east', 'north']) {
+  const roadSamplesForCheck = spatial.samplePath(layoutModule.roadCenterlines[roadName], 32);
+  const minimumCenterlineGap = Math.min(...roadSamplesForCheck.map((point) => distanceToPath(point, riverSamples)));
+  const clearance = (layoutModule.roadWidths[roadName] + layoutModule.riverWidth) / 2;
+  assert(minimumCenterlineGap > clearance, `${roadName} road overlaps the river corridor (gap=${minimumCenterlineGap.toFixed(3)}, required>${clearance.toFixed(3)})`);
+}
+
 const riverBankPolygon = spatial.corridorPolygon(layoutModule.riverCenterline, (layoutModule.riverWidth + 0.22) / 2);
 const bridgeSegments = spatial.pathSegmentsInsidePolygon(layoutModule.roadCenterlines.west, riverBankPolygon, 24);
 assert(bridgeSegments.length === 1, `expected one contiguous bridge overlap segment, got ${bridgeSegments.length}`);
@@ -66,7 +91,7 @@ const riverRegion = layoutModule.worldRegions.find((region) => region.kind === '
 const westRoad = layoutModule.worldRegions.find((region) => region.id === 'road-branch-west');
 assert(spatial.pointInPolygon(crossing, riverRegion.polygon), 'bridge crossing is outside rendered/collision river polygon');
 assert(spatial.pointInPolygon(crossing, westRoad.polygon), 'bridge crossing is outside west road polygon');
-// The bridge's local +X axis must point along the road tangent after Three.js
+// The bridge's local +X axis must point along the road tangent after Babylon's
 // applies rotationY (where +X rotates toward world -Z).
 const roadSamples = spatial.samplePath(layoutModule.roadCenterlines.west, 12);
 let tangentIndex = 0;

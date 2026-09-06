@@ -33,7 +33,8 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   camera.minZ=0.1;camera.maxZ=160;
   // Deliberate fixed composition keeps the article frontage readable. Zoom is
   // explicit; a click/touch never gets confused with an orbit gesture.
-  let zoom=mobile?1:1;
+  const defaultZoom=mobile?1:1.9;
+  let zoom=defaultZoom;
   const fit=()=>{
     const aspect=canvas.clientWidth/Math.max(1,canvas.clientHeight);
     const span=(mobile?34:Math.max(37,54/aspect))/zoom;
@@ -185,7 +186,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   return {
     update,anchor,
     zoom(amount:number){zoom=Math.max(0.75,Math.min(2.6,zoom+amount));fit();},
-    home(){zoom=1;camera.target.set(0,0.2,0);fit();},
+    home(){zoom=defaultZoom;camera.target.set(0,0.2,0);fit();},
     dispose(){disposed=true;engine.stopRenderLoop(render);resize.disconnect();observer.disconnect();document.removeEventListener('visibilitychange',onVisibility);canvas.removeEventListener('pointermove',onMove);canvas.removeEventListener('pointerleave',onLeave);canvas.removeEventListener('pointerdown',onDown);canvas.removeEventListener('pointerup',onUp);ao?.dispose();scene.dispose();engine.dispose();},
   };
 }
