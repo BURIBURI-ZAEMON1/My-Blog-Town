@@ -7,4 +7,5 @@ export default defineConfig({
   trailingSlash: 'always',
   devToolbar: { enabled: false },
   integrations: [react()],
+  vite: { cacheDir: `node_modules/.vite-brick-${process.env.NODE_ENV ?? 'development'}` },
 });

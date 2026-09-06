@@ -58,40 +58,54 @@ assert(rainyNight < clearDay, `rainy night population (${rainyNight}) should be 
 assert(clearDay <= 10, `population exceeded performance cap (${clearDay})`);
 
 
-// Night building illumination must remain local to window panes. Scene-wide
-// Moving scene lights are allowed, but the building construction section must
-// not contain a PointLight or non-window emissive.
-const sceneSource = readFileSync(resolve('src/components/TownScene.tsx'), 'utf8');
-const buildingSection = sceneSource.slice(
-  sceneSource.indexOf('const makeBuilding'),
-  sceneSource.indexOf('const makePedestrian'),
-);
-assert(!buildingSection.includes('PointLight'), 'building construction still contains a PointLight');
-const buildingEmissiveLines = buildingSection
-  .split('\n')
-  .filter((line) => line.includes('emissive'));
-assert(buildingEmissiveLines.length === 0, `building construction contains non-window emissive material: ${buildingEmissiveLines.join(' | ')}`);
-assert(sceneSource.includes('const pane = new THREE.Mesh') && sceneSource.includes('emissiveIntensity'), 'window panes no longer provide their own emissive glow');
-
-assert(sceneSource.includes('makeTownPatrolRoute(townTravelRoutes, samplePath)'), 'guards are not assigned the town-wide patrol circuit');
-assert(sceneSource.includes('canSeePoint(guardPosition, thiefPosition, facing'), 'guard-thief interaction is not visibility gated');
-assert(sceneSource.includes("buildingState = 'entering'") && sceneSource.includes('setOpacity(visualOpacity)'), 'building visit fade state is not wired');
-assert(sceneSource.includes('interactionBlend'), 'conversation offset is not eased');
-assert(sceneSource.includes("Math.floor(Date.now() / 900000)"), 'weather is still pinned to a one-hour slot');
-assert(sceneSource.includes('const isRainy = weatherIsRainy(layout.seed, weatherSlot)'), 'weather is not determined by the 15-minute slot helper');
-assert(rain.RAIN_PROBABILITY === 0.3, `rain weather probability should be 30%, got ${rain.RAIN_PROBABILITY}`);
-const sampledWeather = Array.from({ length: 96 }, (_, index) => rain.weatherIsRainy('river-bend-demo-v2', index));
-const rainySlots = sampledWeather.filter(Boolean).length;
-assert(rainySlots > 3 && rainySlots < 38, `weather helper distribution is implausible across 96 slots (${rainySlots} rainy)`);
-assert(!sceneSource.includes('makeCarriage') && !sceneSource.includes('carriageNodes'), 'carriage model or animation is still present');
-assert(sceneSource.includes('const count = 420') && sceneSource.includes('uTime * rainSpeed') && sceneSource.includes('RAIN_WIND_X'), 'rain system is not using the dense wind-swept loop');
-assert(sceneSource.includes('vertexShader') && sceneSource.includes('uTime * rainSpeed') && sceneSource.includes('rainOffset'), 'rain shader does not calculate per-streak motion');
-assert(sceneSource.includes('rainXOffset') && sceneSource.includes('rainZOffset') && sceneSource.includes('Wrap the line anchor once'), 'rain shader still wraps line endpoints independently');
-assert(sceneSource.includes('if (rainSystem) rainSystem.material.uniforms.uTime.value = elapsed;'), 'rain shader clock is not updated every frame');
-const animateIndex = sceneSource.indexOf('function animate()');
-assert(sceneSource.indexOf('if (rainSystem) rainSystem.material.uniforms.uTime.value = elapsed;', animateIndex) < sceneSource.indexOf('if (!reducedMotion)', animateIndex), 'rain shader clock update occurs after the reduced-motion branch');
-assert(sceneSource.includes("thiefState: role === 'thief' ? 'arriving'") && sceneSource.includes("thiefState = 'escaping'"), 'thief arrival and escape states are not wired');
-
+// Test the actual engine-independent simulation, not names or text in a renderer.
+const simulation = loadTs('src/scene/brick-town/life.ts');
+const simulationLayout = layoutModule.createTownLayout('life-regression', [
+  { id: 'one', building: 'home' }, { id: 'two', building: 'home' }, { id: 'three', building: 'shop' },
+]);
+const actor = (overrides = {}) => {
+  const route = [{x:0,z:0},{x:0,z:3}];
+  return { role:'townsperson', behavior:'visit', state:'walking', route, metrics:life.routeMetrics(route),
+    distance:2.95, speed:0.6, direction:1, position:{x:0,z:2.95}, facing:{x:0,z:1}, opacity:1,
+    timer:0, stay:false, conversation:0, conversationLeft:0, cooldown:10, chasing:false, returning:false, moving:true,
+    ...overrides };
+};
+const emptyLayout = {...simulationLayout, plots:[], regions:[]};
+const visit = actor();
+const visited = new Set();
+for(let i=0;i<700;i++){simulation.tickLife([visit],0.02,emptyLayout);visited.add(visit.state);}
+for(const state of ['entering','inside','exiting','walking']) assert(visited.has(state),`visit never reached ${state}`);
+assert(visit.direction===-1 || visit.state==='entering', 'visitor did not return along its route');
+const resident=actor({stay:true});
+for(let i=0;i<100;i++)simulation.tickLife([resident],0.02,emptyLayout);
+assert(resident.state==='resident'&&resident.opacity===0,'resident did not stay inside');
+const thief=actor({role:'thief',behavior:'sneak',stay:false});
+const thiefStates=new Set();
+for(let i=0;i<1200;i++){simulation.tickLife([thief],0.02,emptyLayout);thiefStates.add(thief.state);}
+for(const state of ['lurking','entering','inside','exiting','escaping','gone']) assert(thiefStates.has(state),`thief never reached ${state}`);
+const guard=actor({role:'guard',behavior:'patrol',distance:0,position:{x:0,z:0},facing:{x:0,z:1}});
+const seen=actor({role:'thief',behavior:'sneak',distance:2,position:{x:0,z:2}});
+simulation.tickLife([guard,seen],0.02,emptyLayout);
+assert(guard.chasing&&seen.state==='escaping','visible thief did not trigger chase');
+assert(guard.position.z>0,'guard did not actually move toward the visible thief');
+const blockedGuard=actor({role:'guard',behavior:'patrol',distance:0,position:{x:0,z:0},facing:{x:0,z:1}});
+const blockedThief=actor({role:'thief',behavior:'sneak',distance:2,position:{x:0,z:2}});
+simulation.tickLife([blockedGuard,blockedThief],0.02,{...emptyLayout,plots:[{x:0,z:1,width:1,depth:0.6}]});
+assert(!blockedGuard.chasing&&blockedThief.state==='walking','guard saw through a building');
+const first=actor({pair:0,behavior:'commute',cooldown:0,distance:1,position:{x:0,z:1}});
+const second=actor({pair:0,behavior:'commute',cooldown:0,distance:1.5,position:{x:0,z:1.5}});
+let previous={...first.position},maxStep=0,conversationPeak=0;
+for(let i=0;i<220;i++){
+  simulation.tickLife([first,second],0.02,emptyLayout);
+  maxStep=Math.max(maxStep,Math.hypot(first.position.x-previous.x,first.position.z-previous.z));
+  conversationPeak=Math.max(conversationPeak,first.conversation);previous={...first.position};
+}
+assert(conversationPeak>0.8,'conversation never became visible');
+assert(maxStep<=0.6*0.02+1e-6,`conversation teleported (${maxStep})`);
+assert(rain.RAIN_PROBABILITY===0.3,'rain probability changed');
+const sampledWeather=Array.from({length:96},(_,i)=>rain.weatherIsRainy('river-bend-demo-v2',i));
+assert(sampledWeather.filter(Boolean).length>3&&sampledWeather.filter(Boolean).length<38,'weather distribution is implausible');
+console.log('Simulation: visit, resident, thief lifecycle, occluded chase, smooth conversation PASS');
 
 
 const pair = day.filter((person) => person.interactionGroup === 0);

@@ -65,6 +65,11 @@ const buildSiteData = async () => {
 
 let siteDataPromise: ReturnType<typeof buildSiteData> | undefined;
 export const getSiteData = () => {
+  // Astro's dev content loader can invalidate Markdown entries while this
+  // module stays warm. Do not hold the first layout promise in dev, otherwise
+  // a newly-added draft=false post never reaches the town layout until the
+  // server is restarted. Static builds keep the safe per-process memoization.
+  if (import.meta.env.DEV) return buildSiteData();
   siteDataPromise ??= buildSiteData();
   return siteDataPromise;
 };

@@ -48,16 +48,18 @@ export interface TownLayout {
   regions: WorldRegion[];
   entities: TownEntity[];
   plots: TownPlot[];
+  /** All collision-reserved article lots, including currently empty lots. */
+  reservedPlots: TownPlot[];
   center: Point;
 }
 
 // This is deliberately smaller than the oversized terrain plane. Article
 // buildings are only ever placed inside this camera-safe band.
 export const visibleBuildingBounds = {
-  minX: -8.2,
-  maxX: 8.2,
-  minZ: -6.4,
-  maxZ: 5.8,
+  minX: -15.0,
+  maxX: 15.0,
+  minZ: -13.2,
+  maxZ: 12.8,
 };
 
 const worldBounds: WorldRegion = {
@@ -111,7 +113,7 @@ export const riverCenterline: Point[] = [
   { x: -18.8, z: -30 }, { x: -15.1, z: -17.4 }, { x: -13.7, z: -12.2 }, { x: -12.0, z: -8.4 },
   { x: -11.5, z: -4.4 }, { x: -10.8, z: -0.7 }, { x: -9.2, z: 3.6 }, { x: -8.2, z: 8.0 },
   { x: -7.3, z: 13.8 }, { x: -5.6, z: 22.5 }, { x: -5.2, z: 30 },
-];
+].map(point => ({ x: point.x + 3.0, z: point.z }));
 
 export const roadCenterlines: Record<string, Point[]> = {
   main: [{ x: -0.7, z: -30 }, { x: 0.15, z: -15 }, { x: 0.3, z: -10.5 }, { x: 0.8, z: -6 }, { x: 0.35, z: -1.8 }, { x: 0.2, z: 2.5 }, { x: -0.5, z: 7.2 }, { x: -1.65, z: 11.4 }, { x: -2.4, z: 30 }],
@@ -223,16 +225,16 @@ const landmark: WorldRegion = {
 // shared by the renderer and the article plot allocator so a new house cannot
 // be placed through a farm bed, fence, or fixed shrub cluster.
 export const townEntities: TownEntity[] = [
-  { id: 'farm-west', kind: 'farm', x: -16.25, z: -12.25, width: 2.5, depth: 1.55, rotation: 0.12 },
-  { id: 'farm-south', kind: 'farm', x: 13.75, z: -13.25, width: 2.7, depth: 1.6, rotation: 0.12 },
-  { id: 'farm-north-east', kind: 'farm', x: 20.0, z: 11.8, width: 3.0, depth: 1.65, rotation: 0.12 },
-  { id: 'fence-west-edge', kind: 'fence', x: -5.5, z: 6.8, width: 2.0, depth: 0.32, rotation: -0.2 },
+  { id: 'farm-west', kind: 'farm', x: 5.7, z: -7.7, width: 2.5, depth: 1.55, rotation: 0.12 },
+  { id: 'farm-south', kind: 'farm', x: 8.8, z: -6.8, width: 2.7, depth: 1.6, rotation: 0.12 },
+  { id: 'farm-north-east', kind: 'farm', x: 8.4, z: 5.4, width: 3.0, depth: 1.65, rotation: 0.12 },
+  { id: 'fence-west-edge', kind: 'fence', x: -2.8, z: 5.0, width: 2.0, depth: 0.32, rotation: -0.2 },
   { id: 'fence-east-edge', kind: 'fence', x: 7.75, z: -5.25, width: 2.5, depth: 0.32, rotation: 0.28 },
-  { id: 'shrub-west-1', kind: 'shrub', x: -8.5, z: -8.8, width: 1.15, depth: 1.0 },
+  { id: 'shrub-west-1', kind: 'shrub', x: -6.2, z: -8.8, width: 1.15, depth: 1.0 },
   { id: 'shrub-west-2', kind: 'shrub', x: -6.3, z: -10.8, width: 1.15, depth: 1.0 },
   { id: 'shrub-east-1', kind: 'shrub', x: 8.5, z: -8.5, width: 1.15, depth: 1.0 },
   { id: 'shrub-east-2', kind: 'shrub', x: 9.75, z: 3.25, width: 1.15, depth: 1.0 },
-  { id: 'shrub-north-1', kind: 'shrub', x: -6.25, z: 9.5, width: 1.15, depth: 1.0 },
+  { id: 'shrub-north-1', kind: 'shrub', x: -7.25, z: 8.5, width: 1.15, depth: 1.0 },
   { id: 'shrub-north-2', kind: 'shrub', x: 6.5, z: 9.5, width: 1.15, depth: 1.0 },
 ];
 
@@ -339,37 +341,45 @@ export const createTownLayout = (seed = 'river-bend-demo-v2', posts: LayoutPost[
   const plots: TownPlot[] = [];
   const roofs: TownPlot['roof'][] = ['gable', 'hip', 'flat'];
   const walls: TownPlot['walls'][] = ['stone', 'plaster', 'timber'];
+  const plotWidth = 2.16;
+  const plotDepth = 1.80;
+  const candidates = [...visibleSlots, ...Array.from({ length: 84 * 72 }, (_, i) => ({
+    x: -14.4 + (i % 84) * 0.36,
+    z: -12.6 + Math.floor(i / 84) * 0.36,
+  }))]
+    .map((slot, slotIndex) => ({ slot, slotIndex, distance: Math.hypot(slot.x, slot.z) }))
+    .sort((a, b) => a.distance - b.distance || a.slotIndex - b.slotIndex);
 
   groups.forEach((group, groupIndex) => {
-    const plotWidth = 1.04 + (groupIndex % 3) * 0.05;
-    const plotDepth = 0.98 + (groupIndex % 2) * 0.04;
-    const candidates = visibleSlots
-      .map((slot, slotIndex) => ({ slot, slotIndex, distance: Math.hypot(slot.x, slot.z) }))
-      .sort((a, b) => a.distance - b.distance || a.slotIndex - b.slotIndex);
     const slot = candidates
       .map(({ slot }) => slot)
       .find((candidate) => isBuildablePlot({ x: candidate.x, z: candidate.z, width: plotWidth, depth: plotDepth }, occupied));
-    if (!slot) {
-      throw new Error(`No camera-safe building slot remains for article group ${groupIndex + 1}. Expand visibleSlots before adding more articles.`);
-    }
+    if (!slot) throw new Error(`No collision-free article building lot remains for article group ${groupIndex + 1}.`);
     const style = buildingStyle(group[0], groupIndex);
     const plot: TownPlot = {
       id: `article-building-${groupIndex + 1}`,
-      x: slot.x,
-      z: slot.z,
-      width: plotWidth,
-      depth: plotDepth,
+      x: slot.x, z: slot.z, width: plotWidth, depth: plotDepth,
       roof: style.roof ?? roofs[(groupIndex + random() * roofs.length) % roofs.length | 0],
       walls: style.walls ?? walls[(groupIndex + random() * walls.length) % walls.length | 0],
-      accent: style.accent,
-      postId: group[0].id,
+      accent: style.accent, postId: group[0].id,
       special: group[0].building === 'shop' || group[0].building === 'forge' ? group[0].building : undefined,
-      seedIndex: groupIndex,
-      seriesPostIds: group.length > 1 ? group.map((post) => post.id) : undefined,
+      seedIndex: groupIndex, seriesPostIds: group.length > 1 ? group.map((post) => post.id) : undefined,
     };
-    occupied.push(plot);
-    plots.push(plot);
+    occupied.push(plot); plots.push(plot);
   });
 
-  return { seed, regions: worldRegions, entities: townEntities, plots, center: { x: 0, z: 0 } };
+  // Reserve empty lots using the exact same collision contract as article lots.
+  // Empty lots are visible as clear space only; they never become buildings.
+  const reservedPlots = [...plots];
+  for (const { slot } of candidates) {
+    if (reservedPlots.length >= 64) break;
+    if (!isBuildablePlot({ x: slot.x, z: slot.z, width: plotWidth, depth: plotDepth }, reservedPlots)) continue;
+    reservedPlots.push({
+      id: `reserved-building-lot-${reservedPlots.length + 1}`,
+      x: slot.x, z: slot.z, width: plotWidth, depth: plotDepth,
+      roof: 'gable', walls: 'plaster', accent: reservedPlots.length % 4,
+      seedIndex: reservedPlots.length,
+    });
+  }
+  return { seed, regions: worldRegions, entities: townEntities, plots, reservedPlots, center: { x: 0, z: 0 } };
 };
