@@ -148,10 +148,10 @@ const rgbAverage = rgbTotal / (ground.width * ground.height * 3);
 assert(alphaMin === 255, `ground texture contains transparent pixels (min alpha ${alphaMin})`);
 assert(rgbAverage > 160, `ground texture is dark enough to blacken the terrain (average ${rgbAverage.toFixed(1)})`);
 
-const samplePosts = Array.from({ length: 8 }, (_, index) => ({ id: `post-${index}`, building: index % 2 ? 'home' : 'shop' }));
+const samplePosts = Array.from({ length: 8 }, (_, index) => ({ id: `post-${index}` }));
 const seriesLayout = layoutModule.createTownLayout('series-regression', [
-  { id: 'series-1', building: 'a', series: 'same-series', seriesIndex: 0 },
-  { id: 'series-2', building: 'c', series: 'same-series', seriesIndex: 1 },
+  { id: 'series-1', series: 'same-series', seriesIndex: 0 },
+  { id: 'series-2', series: 'same-series', seriesIndex: 1 },
 ]);
 assert(seriesLayout.plots.length === 1, `one series must generate one building, got ${seriesLayout.plots.length}`);
 assert(seriesLayout.plots[0].seriesPostIds?.join(',') === 'series-1,series-2', 'series floors are not ordered or grouped correctly');

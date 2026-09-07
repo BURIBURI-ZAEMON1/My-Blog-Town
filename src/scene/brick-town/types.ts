@@ -13,8 +13,6 @@ export type TownPost = {
   updatedAt?: string;
   readingTime: number;
   wordCount: number;
-  building: 'a' | 'b' | 'c' | 'forge' | 'shop' | 'home';
-  mapId: string;
   cover?: string;
   coverAlt?: string;
   sections: ArticleSection[];

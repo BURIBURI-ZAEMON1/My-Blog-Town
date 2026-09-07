@@ -61,7 +61,7 @@ assert(clearDay <= 10, `population exceeded performance cap (${clearDay})`);
 // Test the actual engine-independent simulation, not names or text in a renderer.
 const simulation = loadTs('src/scene/brick-town/life.ts');
 const simulationLayout = layoutModule.createTownLayout('life-regression', [
-  { id: 'one', building: 'home' }, { id: 'two', building: 'home' }, { id: 'three', building: 'shop' },
+  { id: 'one' }, { id: 'two' }, { id: 'three' },
 ]);
 const actor = (overrides = {}) => {
   const route = [{x:0,z:0},{x:0,z:3}];
@@ -115,9 +115,9 @@ assert(pair.length === 2, `social interaction should bind exactly two people, go
 // Every segment is sampled densely, so a long access leg crossing a house is
 // caught even when neither of its endpoints lies inside that footprint.
 const layout = layoutModule.createTownLayout('heavens-door-town-v1', [
-  { id: 'article-one', building: 'b' },
-  { id: 'article-two', building: 'c' },
-  { id: 'article-three', building: 'a' },
+  { id: 'article-one' },
+  { id: 'article-two' },
+  { id: 'article-three' },
 ]);
 const thiefPlot = layout.plots[0];
 const thiefArrival = life.makeThiefArrivalRoute(thiefPlot, layoutModule.townTravelRoutes, spatial.samplePath, layout.plots);

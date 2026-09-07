@@ -5,12 +5,10 @@ description: "从基础安装、插件配置到 AI Agent 工作流，完整介�
 date: "2026-05-13T13:59:13+08:00"
 category: "工具捣鼓"
 tags: ["Obsidian", "入门", "Agent", "笔记", "skill"]
-building: "a"
 series: "Obsidian"
 seriesIndex: 0
 cover: "/assets/posts/obsidian-ai-agent-guide/cover.png"
 coverAlt: "极速上手 Obsidian，配置 AI Agent 搭建笔记流"
-mapId: "town-01"
 draft: false
 ---
 

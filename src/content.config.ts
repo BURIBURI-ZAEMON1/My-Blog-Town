@@ -15,8 +15,6 @@ const posts = defineCollection({
     date: z.coerce.date(),
     updatedAt: z.coerce.date().optional(),
     draft: z.boolean().default(false),
-    building: z.enum(['a', 'b', 'c', 'forge', 'shop', 'home']).default('home'),
-    mapId: z.string().default('town-01'),
     featured: z.boolean().default(false),
     cover: z.string().startsWith('/').optional(),
     coverAlt: z.string().optional(),

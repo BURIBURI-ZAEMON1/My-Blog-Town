@@ -11,6 +11,7 @@ import { createLife, tickLife, type Citizen } from './life';
 import { weatherIsRainy } from '../../data/town-rain';
 import type { TownLayout } from '../../data/town-layout';
 import type { TownSceneProps } from './types';
+import { clampToPanBounds, createRainField, getCameraPanBounds } from './view';
 
 export type SceneState = Pick<TownSceneProps,'activePostId'|'hoveredPostId'|'query'|'category'|'tag'|'colorMode'|'reducedMotion'>;
 export type SceneCallbacks = Pick<TownSceneProps,'onHoverPost'|'onResolvePostAnchor'|'onSelectPost'>;
@@ -35,12 +36,20 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   // explicit; a click/touch never gets confused with an orbit gesture.
   const defaultZoom=mobile?1:1.9;
   let zoom=defaultZoom;
+  const clampCameraTarget=()=>{
+    const panBounds=getCameraPanBounds(
+      BOARD,camera.alpha,camera.beta,
+      camera.orthoRight!-camera.orthoLeft!,camera.orthoTop!-camera.orthoBottom!,
+    );
+    const clamped=clampToPanBounds(camera.target,panBounds);
+    camera.target.x=clamped.x;camera.target.z=clamped.z;
+  };
   const fit=()=>{
     const aspect=canvas.clientWidth/Math.max(1,canvas.clientHeight);
     const span=(mobile?34:Math.max(37,54/aspect))/zoom;
     camera.orthoTop=span/2;camera.orthoBottom=-span/2;
     camera.orthoLeft=-span*aspect/2;camera.orthoRight=span*aspect/2;
-    engine.resize();
+    clampCameraTarget();engine.resize();
   };
   fit();
   const hemi=new HemisphericLight('cool-sky',new Vector3(0,1,0),scene);
@@ -77,7 +86,9 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   let weatherSlot=Math.floor(Date.now()/900000),rainy=weatherIsRainy(layout.seed,weatherSlot);
   let citizens:Citizen[]=[],figures:ReturnType<typeof buildMinifig>[]=[];
   const rainRandom=randomFor(layout.seed+':rain');
-  const drops=Array.from({length:mobile?100:300},()=>({x:-15+rainRandom()*27,z:-11+rainRandom()*22,y:1+rainRandom()*13,speed:6+rainRandom()*4}));
+  // Match rain density to the expanded board rather than the old town-center
+  // rectangle. The small margin keeps drops visible right up to every edge.
+  const drops=createRainField(rainRandom,mobile?280:700,BOARD);
   const linePairs=drops.map(d=>[new Vector3(d.x,d.y,d.z),new Vector3(d.x-0.12,d.y-0.65,d.z-0.04)]);
   const rainMesh=MeshBuilder.CreateLineSystem('rain',{lines:linePairs,updatable:true},scene);
   rainMesh.color=color('#bad4dc');rainMesh.alpha=0.42;rainMesh.isPickable=false;
@@ -130,7 +141,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     return hit?.hit?hit.pickedMesh?.metadata?.postId as string|undefined:undefined;
   }
   const onMove=(e:PointerEvent)=>{
-    if(down&&e.buttons===1&&e.pointerType!=='touch'){
+    if(down&&e.buttons===1){
       const dx=e.clientX-down.lastX,dy=e.clientY-down.lastY;
       down.lastX=e.clientX;down.lastY=e.clientY;
       if(Math.hypot(e.clientX-down.x,e.clientY-down.y)>7){
@@ -138,18 +149,24 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
         const right=new Vector3(Math.sin(camera.alpha),0,-Math.cos(camera.alpha));
         const forward=new Vector3(Math.cos(camera.alpha),0,Math.sin(camera.alpha));
         camera.target.addInPlace(right.scale(-dx*perPixel)).addInPlace(forward.scale(dy*perPixel/Math.cos(camera.beta)));
-        camera.target.x=Math.max(-8,Math.min(8,camera.target.x));camera.target.z=Math.max(-7,Math.min(7,camera.target.z));
+        clampCameraTarget();canvas.style.cursor='grabbing';
         return;
       }
     }
     const id=pick(e);canvas.style.cursor=id?'pointer':'grab';
     if(id!==lastHover){lastHover=id;callbacks().onHoverPost(id,id?{x:e.clientX,y:e.clientY}:undefined);}
   };
-  const onLeave=()=>{lastHover=undefined;callbacks().onHoverPost(undefined);};
-  let down:{x:number;y:number;lastX:number;lastY:number}|undefined;
-  const onDown=(e:PointerEvent)=>{down={x:e.clientX,y:e.clientY,lastX:e.clientX,lastY:e.clientY};};
-  const onUp=(e:PointerEvent)=>{if(down&&Math.hypot(e.clientX-down.x,e.clientY-down.y)<7){const id=pick(e);if(id)callbacks().onSelectPost(id);}down=undefined;};
-  canvas.addEventListener('pointermove',onMove);canvas.addEventListener('pointerleave',onLeave);canvas.addEventListener('pointerdown',onDown);canvas.addEventListener('pointerup',onUp);
+  const onLeave=()=>{lastHover=undefined;callbacks().onHoverPost(undefined);if(!down)canvas.style.cursor='grab';};
+  let down:{x:number;y:number;lastX:number;lastY:number;pointerId:number}|undefined;
+  const onDown=(e:PointerEvent)=>{down={x:e.clientX,y:e.clientY,lastX:e.clientX,lastY:e.clientY,pointerId:e.pointerId};canvas.setPointerCapture?.(e.pointerId);};
+  const finishPointer=(e:PointerEvent,select:boolean)=>{
+    if(select&&down&&Math.hypot(e.clientX-down.x,e.clientY-down.y)<7){const id=pick(e);if(id)callbacks().onSelectPost(id);}
+    if(down&&canvas.hasPointerCapture?.(down.pointerId))canvas.releasePointerCapture(down.pointerId);
+    down=undefined;canvas.style.cursor='grab';
+  };
+  const onUp=(e:PointerEvent)=>finishPointer(e,true);
+  const onCancel=(e:PointerEvent)=>finishPointer(e,false);
+  canvas.addEventListener('pointermove',onMove);canvas.addEventListener('pointerleave',onLeave);canvas.addEventListener('pointerdown',onDown);canvas.addEventListener('pointerup',onUp);canvas.addEventListener('pointercancel',onCancel);
   populate();lighting();update(initial);
   const resize=new ResizeObserver(()=>{fit();if(state.hoveredPostId)anchor(state.hoveredPostId);});resize.observe(canvas.parentElement!);
   function render(){
@@ -174,10 +191,11 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
       const edge=Math.min(p.position.x-BOARD.minX,BOARD.maxX-p.position.x,p.position.z-BOARD.minZ,BOARD.maxZ-p.position.z);
       for(const m of f.meshes)m.visibility=p.opacity*Math.max(0,Math.min(1,edge/0.5));
     });
-    if(rainy){for(let i=0;i<drops.length;i++){const d=drops[i];if(!state.reducedMotion){d.y-=dt*d.speed;if(d.y<0.1)d.y+=13;}linePairs[i][0].set(d.x,d.y,d.z);linePairs[i][1].set(d.x-0.12,d.y-0.65,d.z-0.04);}MeshBuilder.CreateLineSystem('rain',{lines:linePairs,instance:rainMesh},scene);}
+    if(rainy&&!state.reducedMotion){for(let i=0;i<drops.length;i++){const d=drops[i];d.y-=dt*d.speed;if(d.y<0.1)d.y+=13;linePairs[i][0].set(d.x,d.y,d.z);linePairs[i][1].set(d.x-0.12,d.y-0.65,d.z-0.04);}MeshBuilder.CreateLineSystem('rain',{lines:linePairs,instance:rainMesh},scene);}
     for(const m of world.glints)m.visibility=0.65+Math.sin(elapsed*1.5)*0.15;
     scene.render();frames++;
     canvas.dataset.ready='true';canvas.dataset.frames=String(frames);canvas.dataset.weather=rainy?'rain':'clear';canvas.dataset.renderer='webgl2';
+    canvas.dataset.cameraX=camera.target.x.toFixed(2);canvas.dataset.cameraZ=camera.target.z.toFixed(2);canvas.dataset.rainDrops=String(drops.length);
   }
   const syncVisibility=()=>{if(inView&&visible){lastFrame=0;engine.runRenderLoop(render);}else engine.stopRenderLoop(render);};
   const observer=new IntersectionObserver(([entry])=>{inView=!!entry?.isIntersecting;syncVisibility();});observer.observe(canvas);
@@ -187,6 +205,6 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     update,anchor,
     zoom(amount:number){zoom=Math.max(0.75,Math.min(2.6,zoom+amount));fit();},
     home(){zoom=defaultZoom;camera.target.set(0,0.2,0);fit();},
-    dispose(){disposed=true;engine.stopRenderLoop(render);resize.disconnect();observer.disconnect();document.removeEventListener('visibilitychange',onVisibility);canvas.removeEventListener('pointermove',onMove);canvas.removeEventListener('pointerleave',onLeave);canvas.removeEventListener('pointerdown',onDown);canvas.removeEventListener('pointerup',onUp);ao?.dispose();scene.dispose();engine.dispose();},
+    dispose(){disposed=true;engine.stopRenderLoop(render);resize.disconnect();observer.disconnect();document.removeEventListener('visibilitychange',onVisibility);canvas.removeEventListener('pointermove',onMove);canvas.removeEventListener('pointerleave',onLeave);canvas.removeEventListener('pointerdown',onDown);canvas.removeEventListener('pointerup',onUp);canvas.removeEventListener('pointercancel',onCancel);ao?.dispose();scene.dispose();engine.dispose();},
   };
 }

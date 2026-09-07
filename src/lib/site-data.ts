@@ -47,8 +47,6 @@ const buildSiteData = async () => {
         updatedAt: entry.data.updatedAt?.toISOString(),
         readingTime: rendered.readingTime,
         wordCount: rendered.wordCount,
-        building: entry.data.building,
-        mapId: entry.data.mapId,
         cover: entry.data.cover,
         coverAlt: entry.data.coverAlt ?? entry.data.title,
         sections: rendered.sections,

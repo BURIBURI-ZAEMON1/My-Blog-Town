@@ -5,10 +5,8 @@ description: "记录使用 Hugo、Blowfish、GitHub 与 Vercel 搭建个人博�
 date: "2025-10-19T13:59:13+08:00"
 category: "工具捣鼓"
 tags: ["入门", "博客"]
-building: "c"
 series: "Hello, Blog!"
 seriesIndex: 0
-mapId: "town-01"
 draft: false
 ---
 

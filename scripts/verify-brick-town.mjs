@@ -16,15 +16,31 @@ const {createTownLayout,isBuildablePlot}=load('src/data/town-layout.ts');
 const {buildHouse,FLOOR_HEIGHT}=load('src/scene/brick-town/buildings.ts');
 const {roundedBox}=load('src/scene/brick-town/kit.ts');
 const {buildWorld,BOARD}=load('src/scene/brick-town/world.ts');
+const {createRainField,getCameraPanBounds,clampToPanBounds}=load('src/scene/brick-town/view.ts');
 const engine=new NullEngine(),scene=new Scene(engine);
+let rainState=123456789;
+const rainRandom=()=>{rainState=(1664525*rainState+1013904223)>>>0;return rainState/4294967296;};
+const rain=createRainField(rainRandom,700,BOARD);
+const rainMargin=1.8;
+assert.equal(rain.length,700,'desktop rain density regressed');
+assert(rain.every(drop=>drop.x>=BOARD.minX-rainMargin&&drop.x<=BOARD.maxX+rainMargin&&drop.z>=BOARD.minZ-rainMargin&&drop.z<=BOARD.maxZ+rainMargin),'rain escaped full-board field');
+const rainXs=rain.map(drop=>drop.x),rainZs=rain.map(drop=>drop.z);
+assert(Math.min(...rainXs)<BOARD.minX+1&&Math.max(...rainXs)>BOARD.maxX-1,'rain does not reach both X edges');
+assert(Math.min(...rainZs)<BOARD.minZ+1&&Math.max(...rainZs)>BOARD.maxZ-1,'rain does not reach both Z edges');
+const desktopAspect=1100/760;
+const desktopSpan=Math.max(37,54/desktopAspect)/1.9;
+const panBounds=getCameraPanBounds(BOARD,Math.PI*0.68,0.96,desktopSpan*desktopAspect,desktopSpan);
+assert(panBounds.minX<-8&&panBounds.maxX>8&&panBounds.minZ<-7&&panBounds.maxZ>7,'close-view pan remains limited to the old town-center clamp');
+assert.deepEqual(clampToPanBounds({x:-999,z:999},panBounds),{x:panBounds.minX,z:panBounds.maxZ},'camera target is not clamped to computed board coverage');
+
 const geometry=roundedBox(2,1,3,0.02);
 assert(geometry.positions.length>24*3,'brick has no real bevel geometry');
 for(let i=0;i<geometry.normals.length;i+=3)assert(Math.abs(Math.hypot(...geometry.normals.slice(i,i+3))-1)<1e-5,'non-unit bevel normal');
 for(let i=0;i<geometry.positions.length;i+=3){assert(Math.abs(geometry.positions[i])<=1.00001);assert(Math.abs(geometry.positions[i+1])<=0.50001);assert(Math.abs(geometry.positions[i+2])<=1.50001);}
-const posts=[{id:'single',building:'home'},{id:'series-2',building:'home',series:'notes',seriesIndex:2},{id:'series-1',building:'home',series:'notes',seriesIndex:1}];
+const posts=[{id:'single'},{id:'series-2',series:'notes',seriesIndex:2},{id:'series-1',series:'notes',seriesIndex:1}];
 const layout=createTownLayout('brick-verification',posts);
 assert.equal(layout.plots.length,2);
-assert(layout.reservedPlots.length >= 48,'town should expose a stable pool of empty article lots');
+assert(layout.reservedPlots.length >= 96,'expanded town should expose a stable pool of empty article lots');
 assert.deepEqual(layout.plots.find(p=>p.seriesPostIds).seriesPostIds,['series-1','series-2']);
 for (const lot of layout.reservedPlots) {
   assert(isBuildablePlot(lot, layout.reservedPlots.filter(candidate => candidate !== lot)), `reserved lot ${lot.id} overlaps another reserved lot`);
@@ -48,8 +64,15 @@ for(const tree of world.decor){
   assert(!world.isWater(tree,tree.radius),'tree crown overlaps water');
   assert(tree.x>BOARD.minX&&tree.x<BOARD.maxX&&tree.z>BOARD.minZ&&tree.z<BOARD.maxZ,'tree outside board');
 }
-const many=createTownLayout('growth',Array.from({length:8},(_,i)=>({id:`post-${i}`,building:i%2?'home':'shop'})));
+const many=createTownLayout('growth',Array.from({length:8},(_,i)=>({id:`post-${i}`})));
+let overflowError='';
+try{createTownLayout('capacity',Array.from({length:700},(_,i)=>({id:`capacity-${i}`})));}
+catch(error){overflowError=String(error?.message??error);}
+const overflowMatch=overflowError.match(/article group (\d+)/);
+const maxBuildings=overflowMatch?Number(overflowMatch[1])-1:300;
+assert(maxBuildings>54,'expanded layout did not add outer building capacity');
+assert(overflowError.includes('No collision-free article building lot remains'),'overflow should fail with a collision-free lot error');
 assert.equal(many.plots.length,8);
 for(const plot of many.plots){assert(isBuildablePlot(plot,many.plots.filter(p=>p!==plot)),'new article does not fit occupancy model');}
-console.log(JSON.stringify({houses:houses.length,articleFloors:posts.length,bevelVertices:geometry.positions.length/3,decor:world.decor.length,mergedMeshes:world.meshes.length,worldVertices:world.meshes.reduce((sum,m)=>sum+m.getTotalVertices(),0),growthBuildings:many.plots.length},null,2));
+console.log(JSON.stringify({rainDrops:rain.length,panBounds,houses:houses.length,articleFloors:posts.length,bevelVertices:geometry.positions.length/3,decor:world.decor.length,mergedMeshes:world.meshes.length,worldVertices:world.meshes.reduce((sum,m)=>sum+m.getTotalVertices(),0),growthBuildings:many.plots.length,maxBuildings,overflowError},null,2));
 scene.dispose();engine.dispose();

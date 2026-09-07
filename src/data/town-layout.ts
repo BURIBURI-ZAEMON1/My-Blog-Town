@@ -7,6 +7,15 @@ export interface WorldRegion {
   polygon: Point[];
 }
 
+export type TownBuildingStyle =
+  | 'cottage' | 'townhouse' | 'stonehouse' | 'villa' | 'rowhouse' | 'workshop'
+  | 'shop' | 'forge' | 'inn' | 'watchtower' | 'chapel' | 'windmill' | 'clocktower';
+
+export type TownSpecialStyle = Extract<TownBuildingStyle, 'shop' | 'forge' | 'inn' | 'watchtower' | 'chapel' | 'windmill' | 'clocktower'>;
+
+/** Extra empty ground kept around each building for a readable town scale. */
+export const BUILDING_GAP = 0.9;
+
 export interface TownPlot {
   id: string;
   x: number;
@@ -18,14 +27,14 @@ export interface TownPlot {
   accent: number;
   postId?: string;
   floor?: number;
-  special?: 'shop' | 'forge';
+  style: TownBuildingStyle;
+  special?: TownSpecialStyle;
   seedIndex: number;
   seriesPostIds?: string[];
 }
 
 export interface LayoutPost {
   id: string;
-  building: 'a' | 'b' | 'c' | 'forge' | 'shop' | 'home';
   series?: string;
   seriesIndex?: number;
   date?: string;
@@ -53,19 +62,22 @@ export interface TownLayout {
   center: Point;
 }
 
-// This is deliberately smaller than the oversized terrain plane. Article
-// buildings are only ever placed inside this camera-safe band.
+// Article plots can now use the quiet outer field as well as the town core.
+// This is still kept just inside the diorama edge so every building retains a
+// small grass margin and never clips the raised board wall. Existing ground
+// bricks and decorations are not removed: layout is calculated before the
+// world renderer and the same occupancy contract makes the reservation win.
 export const visibleBuildingBounds = {
-  minX: -15.0,
-  maxX: 15.0,
-  minZ: -13.2,
-  maxZ: 12.8,
+  minX: -31.0,
+  maxX: 31.0,
+  minZ: -25.0,
+  maxZ: 25.0,
 };
 
 const worldBounds: WorldRegion = {
   id: 'world-buildable',
   kind: 'buildable',
-  polygon: [{ x: -24, z: -20 }, { x: 24, z: -20 }, { x: 24, z: 20 }, { x: -24, z: 20 }],
+  polygon: [{ x: -32.4, z: -26.6 }, { x: 32.4, z: -26.6 }, { x: 32.4, z: 26.6 }, { x: -32.4, z: 26.6 }],
 };
 
 const catmullRomPoint = (p0: Point, p1: Point, p2: Point, p3: Point, t: number): Point => {
@@ -261,7 +273,7 @@ const polygonBounds = (polygon: Point[]) => ({
 });
 
 const overlaps = (a: { x: number; z: number; width: number; depth: number }, b: { x: number; z: number; width: number; depth: number }) =>
-  Math.abs(a.x - b.x) < (a.width + b.width) / 2 + 0.35 && Math.abs(a.z - b.z) < (a.depth + b.depth) / 2 + 0.35;
+  Math.abs(a.x - b.x) < (a.width + b.width) / 2 + BUILDING_GAP && Math.abs(a.z - b.z) < (a.depth + b.depth) / 2 + BUILDING_GAP;
 
 const intersectsRegion = (plot: { x: number; z: number; width: number; depth: number }, region: WorldRegion) => {
   const bounds = polygonBounds(region.polygon);
@@ -295,17 +307,30 @@ const rngFor = (seed: string) => {
   };
 };
 
-const buildingStyle = (post: LayoutPost, index: number) => {
-  const styleByKind: Record<LayoutPost['building'], { roof: TownPlot['roof']; walls: TownPlot['walls'] }> = {
-    a: { roof: 'gable', walls: 'timber' },
-    b: { roof: 'hip', walls: 'stone' },
-    c: { roof: 'gable', walls: 'plaster' },
-    forge: { roof: 'flat', walls: 'stone' },
-    shop: { roof: 'hip', walls: 'timber' },
-    home: { roof: 'gable', walls: 'plaster' },
-  };
-  const style = styleByKind[post.building];
-  return { ...style, accent: index % 4 };
+const normalBuildingStyles: Array<{ style: Exclude<TownBuildingStyle, TownSpecialStyle>; roof: TownPlot['roof']; walls: TownPlot['walls'] }> = [
+  { style: 'cottage', roof: 'gable', walls: 'plaster' },
+  { style: 'townhouse', roof: 'gable', walls: 'timber' },
+  { style: 'stonehouse', roof: 'hip', walls: 'stone' },
+  { style: 'villa', roof: 'hip', walls: 'plaster' },
+  { style: 'rowhouse', roof: 'flat', walls: 'timber' },
+  { style: 'workshop', roof: 'flat', walls: 'stone' },
+];
+
+const specialBuildingStyles: Array<{ style: TownSpecialStyle; roof: TownPlot['roof']; walls: TownPlot['walls'] }> = [
+  { style: 'shop', roof: 'hip', walls: 'timber' },
+  { style: 'forge', roof: 'flat', walls: 'stone' },
+  { style: 'inn', roof: 'gable', walls: 'plaster' },
+  { style: 'watchtower', roof: 'flat', walls: 'stone' },
+  { style: 'chapel', roof: 'gable', walls: 'plaster' },
+  { style: 'windmill', roof: 'gable', walls: 'timber' },
+  { style: 'clocktower', roof: 'flat', walls: 'stone' },
+];
+
+const pickBuildingStyle = (random: () => number, index: number) => {
+  // Special landmarks remain uncommon so the town keeps a believable skyline.
+  const special = random() < 0.11;
+  const catalog = special ? specialBuildingStyles : normalBuildingStyles;
+  return catalog[(index + Math.floor(random() * catalog.length)) % catalog.length];
 };
 
 const groupPosts = (posts: LayoutPost[]) => {
@@ -345,41 +370,79 @@ export const createTownLayout = (seed = 'river-bend-demo-v2', posts: LayoutPost[
   const walls: TownPlot['walls'][] = ['stone', 'plaster', 'timber'];
   const plotWidth = 2.16;
   const plotDepth = 1.80;
-  const candidates = [...visibleSlots, ...Array.from({ length: 84 * 72 }, (_, i) => ({
-    x: -14.4 + (i % 84) * 0.36,
-    z: -12.6 + Math.floor(i / 84) * 0.36,
-  }))]
-    .map((slot, slotIndex) => ({ slot, slotIndex, distance: Math.hypot(slot.x, slot.z) }))
-    .sort((a, b) => a.distance - b.distance || a.slotIndex - b.slotIndex);
+  const gridStep = 0.36;
+  const gridMinX = visibleBuildingBounds.minX + plotWidth / 2;
+  const gridMaxX = visibleBuildingBounds.maxX - plotWidth / 2;
+  const gridMinZ = visibleBuildingBounds.minZ + plotDepth / 2;
+  const gridMaxZ = visibleBuildingBounds.maxZ - plotDepth / 2;
+  const expandedSlots: Point[] = [];
+  for (let x = gridMinX; x <= gridMaxX + 1e-6; x += gridStep) {
+    for (let z = gridMinZ; z <= gridMaxZ + 1e-6; z += gridStep) expandedSlots.push({ x: Number(x.toFixed(4)), z: Number(z.toFixed(4)) });
+  }
+  const uniqueSlots = new Map<string, Point>();
+  [...visibleSlots, ...expandedSlots].forEach((slot) => uniqueSlots.set(`${slot.x.toFixed(4)}:${slot.z.toFixed(4)}`, slot));
+  const slotRandom = rngFor(`${seed}:plot-order`);
+  const ringWidth = 7.5;
+  const candidates = [...uniqueSlots.values()]
+    .map((slot, slotIndex) => ({ slot, slotIndex, distance: Math.hypot(slot.x, slot.z), ring: Math.floor(Math.hypot(slot.x, slot.z) / ringWidth), jitter: slotRandom() }))
+    .sort((a, b) => a.ring - b.ring || a.distance + a.jitter * 1.8 - (b.distance + b.jitter * 1.8) || a.slotIndex - b.slotIndex);
 
+  // Estimate how many safely spaced plots each ring can hold. This is only a
+  // layout metric; it does not create buildings or touch the rendered world.
+  const ringCapacity = new Map<number, number>();
+  const ringCandidates = new Map<number, typeof candidates>();
+  candidates.forEach((candidate) => ringCandidates.set(candidate.ring, [...(ringCandidates.get(candidate.ring) ?? []), candidate]));
+  ringCandidates.forEach((ringSlots, ring) => {
+    const ringOccupied: Array<{ x: number; z: number; width: number; depth: number }> = [];
+    for (const candidate of ringSlots) {
+      const footprint = { x: candidate.slot.x, z: candidate.slot.z, width: plotWidth, depth: plotDepth };
+      if (!isBuildablePlot(footprint, ringOccupied)) continue;
+      ringOccupied.push(footprint);
+    }
+    ringCapacity.set(ring, ringOccupied.length);
+  });
+
+  let unlockedRing = 0;
+  const ringOccupied = new Map<number, number>();
+  const unlockThreshold = 0.58;
   groups.forEach((group, groupIndex) => {
-    const slot = candidates
-      .map(({ slot }) => slot)
-      .find((candidate) => isBuildablePlot({ x: candidate.x, z: candidate.z, width: plotWidth, depth: plotDepth }, occupied));
+    let candidate = candidates.find(({ slot, ring }) => ring <= unlockedRing && isBuildablePlot({ x: slot.x, z: slot.z, width: plotWidth, depth: plotDepth }, occupied));
+    while (!candidate && unlockedRing < Math.max(...ringCapacity.keys())) {
+      unlockedRing += 1;
+      candidate = candidates.find(({ slot, ring }) => ring <= unlockedRing && isBuildablePlot({ x: slot.x, z: slot.z, width: plotWidth, depth: plotDepth }, occupied));
+    }
+    const slot = candidate?.slot;
     if (!slot) throw new Error(`No collision-free article building lot remains for article group ${groupIndex + 1}.`);
-    const style = buildingStyle(group[0], groupIndex);
+    const style = pickBuildingStyle(random, groupIndex);
     const plot: TownPlot = {
       id: `article-building-${groupIndex + 1}`,
       x: slot.x, z: slot.z, width: plotWidth, depth: plotDepth,
       roof: style.roof ?? roofs[(groupIndex + random() * roofs.length) % roofs.length | 0],
       walls: style.walls ?? walls[(groupIndex + random() * walls.length) % walls.length | 0],
-      accent: style.accent, postId: group[0].id,
-      special: group[0].building === 'shop' || group[0].building === 'forge' ? group[0].building : undefined,
+      accent: groupIndex % 4, style: style.style, postId: group[0].id,
+      special: specialBuildingStyles.some((candidate) => candidate.style === style.style) ? style.style as TownSpecialStyle : undefined,
       seedIndex: groupIndex, seriesPostIds: group.length > 1 ? group.map((post) => post.id) : undefined,
     };
     occupied.push(plot); plots.push(plot);
+    const placedRing = candidate?.ring ?? 0;
+    ringOccupied.set(placedRing, (ringOccupied.get(placedRing) ?? 0) + 1);
+    const capacity = ringCapacity.get(placedRing) ?? 0;
+    if (capacity > 0 && (ringOccupied.get(placedRing) ?? 0) / capacity >= unlockThreshold) unlockedRing = Math.max(unlockedRing, placedRing + 1);
   });
 
   // Reserve empty lots using the exact same collision contract as article lots.
   // Empty lots are visible as clear space only; they never become buildings.
   const reservedPlots = [...plots];
   for (const { slot } of candidates) {
-    if (reservedPlots.length >= 64) break;
+    // Keep a generous logical buffer ahead of the current article count. The
+    // full candidate field is still available to future layouts, while this
+    // buffer protects the currently rendered world from decorative overlap.
+    if (reservedPlots.length >= Math.max(96, groups.length + 48)) break;
     if (!isBuildablePlot({ x: slot.x, z: slot.z, width: plotWidth, depth: plotDepth }, reservedPlots)) continue;
     reservedPlots.push({
       id: `reserved-building-lot-${reservedPlots.length + 1}`,
       x: slot.x, z: slot.z, width: plotWidth, depth: plotDepth,
-      roof: 'gable', walls: 'plaster', accent: reservedPlots.length % 4,
+      roof: 'gable', walls: 'plaster', accent: reservedPlots.length % 4, style: 'cottage',
       seedIndex: reservedPlots.length,
     });
   }

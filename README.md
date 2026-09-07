@@ -40,9 +40,8 @@ description: "摘要"
 date: "2026-08-29T12:00:00+08:00"
 category: "分类"
 tags: ["标签"]
-building: "home"
 cover: "/assets/posts/example/cover.png" # 可选
-coverAlt: "封面说明"                 # 可选
+coverAlt: "封面说明"                 # 可选，仅用于无障碍图片替代文本
 draft: false
 ---
 ```
