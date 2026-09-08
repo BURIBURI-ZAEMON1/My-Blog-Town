@@ -1,20 +1,9 @@
-import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera.js';
-import { Camera } from '@babylonjs/core/Cameras/camera.js';
-import { Color3, Color4 } from '@babylonjs/core/Maths/math.color.js';
-import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector.js';
-import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture.js';
-import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight.js';
-import { Engine } from '@babylonjs/core/Engines/engine.js';
-import { FxaaPostProcess } from '@babylonjs/core/PostProcesses/fxaaPostProcess.js';
-import { GlowLayer } from '@babylonjs/core/Layers/glowLayer.js';
-import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight.js';
-import { HighlightLayer } from '@babylonjs/core/Layers/highlightLayer.js';
-import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration.js';
-import { CreateLineSystem } from '@babylonjs/core/Meshes/Builders/linesBuilder.js';
-import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial.js';
-import { Scene } from '@babylonjs/core/scene.js';
-import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator.js';
-import { VertexBuffer } from '@babylonjs/core/Buffers/buffer.js';
+import {
+  ArcRotateCamera, Camera, Color3, Color4, CubeTexture, DirectionalLight, Engine,
+  GlowLayer, HemisphericLight, HighlightLayer, ImageProcessingConfiguration,
+  Matrix, MeshBuilder, PBRMaterial, Scene, ShadowGenerator, Vector3,
+  SSAO2RenderingPipeline, DefaultRenderingPipeline,
+} from '@babylonjs/core';
 import { BOARD, buildWorld, randomFor } from './world';
 import { buildHouse, FLOOR_HEIGHT, GROUND_Y } from './buildings';
 import { buildMinifig } from './minifig';
@@ -31,9 +20,7 @@ const color=(hex:string)=>Color3.FromHexString(hex);
 export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:TownSceneProps['posts'],initial:SceneState,callbacks:()=>SceneCallbacks) {
   const mobile=canvas.clientWidth<720;
   const engine=new Engine(canvas,true,{stencil:true,preserveDrawingBuffer:false,powerPreference:'default'});
-  // A 1.25 DPR ceiling keeps bevel highlights crisp while avoiding the 2.25x
-  // render-target cost that a 1.5 DPR cap caused on Retina displays.
-  engine.setHardwareScalingLevel(1/Math.min(window.devicePixelRatio,1.25));
+  engine.setHardwareScalingLevel(1/Math.min(window.devicePixelRatio,mobile?1.25:1.5));
   const scene=new Scene(engine);
   scene.clearColor=Color4.FromHexString('#e3ddcdff');
   scene.environmentTexture=CubeTexture.CreateFromPrefilteredData('/assets/brick-town/studio.env',scene);
@@ -73,17 +60,11 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   const shadows=new ShadowGenerator(mobile?1024:2048,sun);
   shadows.usePercentageCloserFiltering=true;shadows.filteringQuality=ShadowGenerator.QUALITY_MEDIUM;
   shadows.bias=0.00012;shadows.normalBias=0.018;
-  // Only static architecture and scenery cast shadows. Rendering this depth map
-  // once preserves the same town lighting without paying for it every frame.
-  shadows.getShadowMap()!.refreshRate=0;
+  shadows.getShadowMap()!.refreshRate=2;
   const world=buildWorld(scene,layout);
   const houses=layout.plots.map(p=>buildHouse(scene,p));
   const houseMeshes=houses.flatMap(h=>h.meshes);
-  // Terrain plates cannot cast a useful shadow onto themselves. Excluding that
-  // multi-million-instance surface cuts most shadow-map geometry while houses,
-  // trees, props and citizens retain their natural shadows.
-  for(const m of [...world.shadowCasters,...houseMeshes])shadows.addShadowCaster(m);
-  for(const m of [...world.meshes,...houseMeshes]){m.computeWorldMatrix(true);m.freezeWorldMatrix();}
+  for(const m of [...world.meshes,...houseMeshes])shadows.addShadowCaster(m);
   const glow=new GlowLayer('warm-window-scatter',scene,{mainTextureRatio:0.35});glow.intensity=0.22;
   // Empty include lists glow every emissive object. Explicit exclusions prevent
   // filter outlines from turning whole houses into night lights.
@@ -91,22 +72,16 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   for(const m of houseMeshes)if(!m.metadata.glass)glow.addExcludedMesh(m);
   const highlights=new HighlightLayer('article-floor-highlight',scene,{mainTextureRatio:0.5});
   highlights.blurHorizontalSize=0.55;highlights.blurVerticalSize=0.55;highlights.innerGlow=false;
-  let disposed=false;
-  let ao:import('@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline.js').SSAO2RenderingPipeline|undefined;
-  // Contact AO is a secondary refinement, so load it in a separate chunk while
-  // the brick assembly overlay is playing instead of blocking the first frame.
-  if(!mobile&&engine.webGLVersion===2) void import('@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline.js').then(({SSAO2RenderingPipeline})=>{
-    if(disposed)return;
-    ao=new SSAO2RenderingPipeline('brick-contact-shadows',scene,{ssaoRatio:0.5,blurRatio:0.5},[camera]);
-    ao.radius=0.35;ao.totalStrength=1.0;ao.samples=8;ao.expensiveBlur=false;
-  });
-  // DefaultRenderingPipeline imports and allocates bloom/DoF/chromatic passes
-  // even though this scene only used FXAA. A focused post-process is equivalent
-  // visually and removes megabytes of unused browser code.
-  const fxaa=new FxaaPostProcess('brick-fxaa',1,camera);
-  fxaa.samples=1;
+  let ao:SSAO2RenderingPipeline|undefined;
+  if(!mobile&&engine.webGLVersion===2) {
+    ao=new SSAO2RenderingPipeline('brick-contact-shadows',scene,{ssaoRatio:0.65,blurRatio:0.75},[camera]);
+    ao.radius=0.35;ao.totalStrength=1.0;ao.samples=12;ao.expensiveBlur=false;
+  }
+  const pipeline=new DefaultRenderingPipeline('photographic-finish',true,scene,[camera]);
+  pipeline.fxaaEnabled=true;pipeline.samples=1;
+  pipeline.imageProcessingEnabled=false;pipeline.bloomEnabled=false;
   const postMap=new Map(posts.map(p=>[p.id,p]));
-  let state={...initial};let frames=0;let elapsed=0;
+  let state={...initial};let disposed=false;let frames=0;let elapsed=0;
   let inView=true,visible=!document.hidden,lastFrame=0;
   let weatherSlot=Math.floor(Date.now()/900000),rainy=weatherIsRainy(layout.seed,weatherSlot);
   let citizens:Citizen[]=[],figures:ReturnType<typeof buildMinifig>[]=[];
@@ -115,15 +90,13 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   // rectangle. The small margin keeps drops visible right up to every edge.
   const drops=createRainField(rainRandom,mobile?280:700,BOARD);
   const linePairs=drops.map(d=>[new Vector3(d.x,d.y,d.z),new Vector3(d.x-0.12,d.y-0.65,d.z-0.04)]);
-  const rainMesh=CreateLineSystem('rain',{lines:linePairs,updatable:true},scene);
-  const rainPositions=new Float32Array(drops.length*6);
+  const rainMesh=MeshBuilder.CreateLineSystem('rain',{lines:linePairs,updatable:true},scene);
   rainMesh.color=color('#bad4dc');rainMesh.alpha=0.42;rainMesh.isPickable=false;
   function populate() {
-    for(const f of figures)f.root.dispose(false,false);
+    for(const f of figures){for(const m of f.meshes)shadows.removeShadowCaster(m);f.root.dispose(false,true);}
     citizens=createLife(layout,state.colorMode==='night',rainy,randomFor(`${layout.seed}:${state.colorMode}:${weatherSlot}`));
     figures=citizens.map((p,i)=>buildMinifig(scene,p.role,i,state.colorMode==='night',rainy));
-    // Minifigures are tiny at the map scale; omitting their animated shadow-map
-    // passes removes most per-frame shadow draw calls with no visible town loss.
+    for(const f of figures)for(const m of f.meshes)shadows.addShadowCaster(m);
   }
   function lighting() {
     const night=state.colorMode==='night';
@@ -137,19 +110,18 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
       mat.albedoColor=color(night?'#edbd6d':'#5e97a4');
     }
     for(const m of world.lamps){const mat=m.material as PBRMaterial;mat.emissiveColor=night?color('#ffba5b'):Color3.Black();mat.emissiveIntensity=night?1.5:0;}
-    rainMesh.setEnabled(rainy);glow.isEnabled=night;
+    rainMesh.setEnabled(rainy);
   }
   function update(next:SceneState) {
     const rebuildPeople=next.colorMode!==state.colorMode;
     state={...next};if(rebuildPeople){populate();lighting();}
-    const needle=state.query.trim().toLowerCase();let hasHighlight=false;
+    const needle=state.query.trim().toLowerCase();
     for(const mesh of houseMeshes){
       const post=postMap.get(mesh.metadata.postId);if(!post)continue;
       const matches=!!(needle||state.category||state.tag)&&(!needle||[post.title,post.description,post.category,...post.tags,post.series??''].join(' ').toLowerCase().includes(needle))&&(!state.category||post.category===state.category)&&(!state.tag||post.tags.includes(state.tag));
       const direct=post.id===state.hoveredPostId||post.id===state.activePostId;
-      if(direct||matches){highlights.addMesh(mesh,color(direct?'#90e3d4':'#edbb53'));hasHighlight=true;}else highlights.removeMesh(mesh);
+      if(direct||matches)highlights.addMesh(mesh,color(direct?'#90e3d4':'#edbb53'));else highlights.removeMesh(mesh);
     }
-    highlights.isEnabled=hasHighlight;
     if(state.hoveredPostId)anchor(state.hoveredPostId);
   }
   function anchor(id:string){
@@ -160,7 +132,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     const a={x:rect.left+p.x*rect.width/engine.getRenderWidth(),y:rect.top+p.y*rect.height/engine.getRenderHeight()};
     callbacks().onResolvePostAnchor(id,a);return a;
   }
-  let lastHover:string|undefined,lastPickAt=0;
+  let lastHover:string|undefined;
   function pick(event:PointerEvent){
     const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;
     // Pick ALL real solid surfaces. Roof/terrain/tree occlusion is respected;
@@ -181,7 +153,6 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
         return;
       }
     }
-    const now=performance.now();if(now-lastPickAt<32)return;lastPickAt=now;
     const id=pick(e);canvas.style.cursor=id?'pointer':'grab';
     if(id!==lastHover){lastHover=id;callbacks().onHoverPost(id,id?{x:e.clientX,y:e.clientY}:undefined);}
   };
@@ -198,15 +169,9 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   canvas.addEventListener('pointermove',onMove);canvas.addEventListener('pointerleave',onLeave);canvas.addEventListener('pointerdown',onDown);canvas.addEventListener('pointerup',onUp);canvas.addEventListener('pointercancel',onCancel);
   populate();lighting();update(initial);
   const resize=new ResizeObserver(()=>{fit();if(state.hoveredPostId)anchor(state.hoveredPostId);});resize.observe(canvas.parentElement!);
-  let lastDiagnostics=0,slowRenderFrames=0;
-  function publishDiagnostics(now:number){
-    canvas.dataset.ready='true';canvas.dataset.frames=String(frames);canvas.dataset.weather=rainy?'rain':'clear';canvas.dataset.renderer=engine.webGLVersion===2?'webgl2':'webgl1';
-    canvas.dataset.cameraX=camera.target.x.toFixed(2);canvas.dataset.cameraZ=camera.target.z.toFixed(2);canvas.dataset.rainDrops=String(drops.length);
-    canvas.dataset.sceneMeshes=String(scene.meshes.length);canvas.dataset.sceneMaterials=String(scene.materials.length);canvas.dataset.sceneVertices=String(scene.getTotalVertices());canvas.dataset.thinInstances=String(scene.meshes.reduce((sum,mesh)=>sum+('thinInstanceCount' in mesh?Number(mesh.thinInstanceCount):0),0));lastDiagnostics=now;
-  }
   function render(){
     if(disposed||!inView||!visible)return;
-    const now=performance.now();if(now-lastFrame<33)return;
+    const now=performance.now();if(now-lastFrame<(mobile?33:16))return;
     const dt=Math.min(0.05,lastFrame?(now-lastFrame)/1000:0.016);lastFrame=now;elapsed+=dt;
     const slot=Math.floor(Date.now()/900000);
     if(slot!==weatherSlot){weatherSlot=slot;rainy=weatherIsRainy(layout.seed,slot);populate();lighting();}
@@ -226,11 +191,11 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
       const edge=Math.min(p.position.x-BOARD.minX,BOARD.maxX-p.position.x,p.position.z-BOARD.minZ,BOARD.maxZ-p.position.z);
       for(const m of f.meshes)m.visibility=p.opacity*Math.max(0,Math.min(1,edge/0.5));
     });
-    if(rainy&&!state.reducedMotion){for(let i=0;i<drops.length;i++){const d=drops[i];d.y-=dt*d.speed;if(d.y<0.1)d.y+=13;const offset=i*6;rainPositions[offset]=d.x;rainPositions[offset+1]=d.y;rainPositions[offset+2]=d.z;rainPositions[offset+3]=d.x-0.12;rainPositions[offset+4]=d.y-0.65;rainPositions[offset+5]=d.z-0.04;}rainMesh.updateVerticesData(VertexBuffer.PositionKind,rainPositions,false,false);}
+    if(rainy&&!state.reducedMotion){for(let i=0;i<drops.length;i++){const d=drops[i];d.y-=dt*d.speed;if(d.y<0.1)d.y+=13;linePairs[i][0].set(d.x,d.y,d.z);linePairs[i][1].set(d.x-0.12,d.y-0.65,d.z-0.04);}MeshBuilder.CreateLineSystem('rain',{lines:linePairs,instance:rainMesh},scene);}
     for(const m of world.glints)m.visibility=0.65+Math.sin(elapsed*1.5)*0.15;
-    const renderStarted=performance.now();scene.render();const renderCost=performance.now()-renderStarted;frames++;
-    if(ao&&renderCost>55){slowRenderFrames++;if(slowRenderFrames>=4){ao.dispose();ao=undefined;canvas.dataset.adaptiveAo='off';}}else slowRenderFrames=Math.max(0,slowRenderFrames-1);
-    if(frames===1||now-lastDiagnostics>500)publishDiagnostics(now);
+    scene.render();frames++;
+    canvas.dataset.ready='true';canvas.dataset.frames=String(frames);canvas.dataset.weather=rainy?'rain':'clear';canvas.dataset.renderer='webgl2';
+    canvas.dataset.cameraX=camera.target.x.toFixed(2);canvas.dataset.cameraZ=camera.target.z.toFixed(2);canvas.dataset.rainDrops=String(drops.length);
   }
   const syncVisibility=()=>{if(inView&&visible){lastFrame=0;engine.runRenderLoop(render);}else engine.stopRenderLoop(render);};
   const observer=new IntersectionObserver(([entry])=>{inView=!!entry?.isIntersecting;syncVisibility();});observer.observe(canvas);

@@ -1,5 +1,4 @@
-import { TransformNode } from '@babylonjs/core/Meshes/transformNode.js';
-import type { Scene } from '@babylonjs/core/scene.js';
+import { TransformNode, type Scene } from '@babylonjs/core';
 import type { TownBuildingStyle, TownPlot } from '../../data/town-layout';
 import { BrickKit, COLORS as C, COURSE as H, STUD as S } from './kit';
 
