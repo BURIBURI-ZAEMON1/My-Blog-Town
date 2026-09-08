@@ -1,6 +1,22 @@
-import { DynamicTexture, MeshBuilder, PBRMaterial, Color3, TransformNode, type Scene } from '@babylonjs/core';
+import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture.js';
+import { CreatePlane } from '@babylonjs/core/Meshes/Builders/planeBuilder.js';
+import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial.js';
+import { Color3 } from '@babylonjs/core/Maths/math.color.js';
+import { TransformNode } from '@babylonjs/core/Meshes/transformNode.js';
+import type { Scene } from '@babylonjs/core/scene.js';
 import { BrickKit, COLORS as C } from './kit';
 import type { TownPersonRole } from '../../data/town-life';
+
+const faceMaterials = new WeakMap<Scene, PBRMaterial>();
+const faceMaterialFor = (scene: Scene) => {
+  const cached = faceMaterials.get(scene); if (cached) return cached;
+  const faceTex=new DynamicTexture('minifig-face',{width:128,height:128},scene,false);
+  const ctx=faceTex.getContext();ctx.clearRect(0,0,128,128);ctx.fillStyle='#202626';
+  for(const x of [39,89]){ctx.beginPath();ctx.arc(x,46,6,0,Math.PI*2);ctx.fill();}
+  ctx.lineWidth=5;ctx.strokeStyle='#202626';ctx.beginPath();ctx.arc(64,66,24,0.18,Math.PI-0.18);ctx.stroke();faceTex.update();faceTex.hasAlpha=true;
+  const material=new PBRMaterial('minifig-face-ink',scene);material.albedoTexture=faceTex;material.useAlphaFromAlbedoTexture=true;material.metallic=0;material.roughness=0.4;material.backFaceCulling=false;
+  faceMaterials.set(scene,material);return material;
+};
 
 // Articulated moulded body parts. Shoulders and hips are actual pivots.
 export function buildMinifig(scene:Scene,role:TownPersonRole,index:number,night:boolean,rainy:boolean) {
@@ -14,13 +30,10 @@ export function buildMinifig(scene:Scene,role:TownPersonRole,index:number,night:
   kit.cylinder(0,0.94,0,0.16,0.09,C.yellow);
   kit.cylinder(0,1.10,0,0.34,0.28,C.yellow);
   kit.cylinder(0,1.265,0,0.19,0.06,C.yellow);
-  // Printed facial graphic, mapped only to the front of the cylindrical head.
-  const faceTex=new DynamicTexture(`face:${index}`,{width:128,height:128},scene,false);
-  const ctx=faceTex.getContext();ctx.clearRect(0,0,128,128);ctx.fillStyle='#202626';
-  for(const x of [39,89]){ctx.beginPath();ctx.arc(x,46,6,0,Math.PI*2);ctx.fill();}
-  ctx.lineWidth=5;ctx.strokeStyle='#202626';ctx.beginPath();ctx.arc(64,66,24,0.18,Math.PI-0.18);ctx.stroke();faceTex.update();faceTex.hasAlpha=true;
-  const face=MeshBuilder.CreatePlane(`face:${index}`,{width:0.24,height:0.23},scene);face.position.set(0,1.10,0.174);face.rotation.y=Math.PI;face.parent=root;
-  const faceMat=new PBRMaterial(`face-ink:${index}`,scene);faceMat.albedoTexture=faceTex;faceMat.useAlphaFromAlbedoTexture=true;faceMat.metallic=0;faceMat.roughness=0.4;faceMat.backFaceCulling=false;face.material=faceMat;
+  // Every minifigure uses the same printed face atlas and material. Creating a
+  // 128px GPU texture per citizen was visually identical but needlessly costly.
+  const face=CreatePlane(`face:${index}`,{width:0.24,height:0.23},scene);face.position.set(0,1.10,0.174);face.rotation.y=Math.PI;face.parent=root;
+  face.material=faceMaterialFor(scene);
   // Costume silhouette and small printed torso details.
   if(role==='guard'){
     kit.cylinder(0,1.28,0,0.40,0.12,C.road);kit.cylinder(0,1.37,0,0.32,0.09,C.road,undefined,0.06);
@@ -49,7 +62,7 @@ export function buildMinifig(scene:Scene,role:TownPersonRole,index:number,night:
   let torch;
   if(role==='guard'&&night) {
     kit.cylinder(0.36,0.9,0.07,0.055,0.65,C.brown);
-    const flame=new BrickKit(scene,root);flame.cylinder(0.36,1.28,0.07,0.13,0.22,C.yellow,undefined,0.015);torch=flame.flush('torch')[0];
+    const flame=new BrickKit(scene,root,'torch');flame.cylinder(0.36,1.28,0.07,0.13,0.22,C.yellow,undefined,0.015);torch=flame.flush('torch')[0];
     const mat=torch.material as PBRMaterial;mat.emissiveColor=Color3.FromHexString('#ff9634');mat.emissiveIntensity=1.8;
   }
   if(rainy) {

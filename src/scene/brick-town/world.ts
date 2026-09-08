@@ -1,8 +1,11 @@
-import { MeshBuilder, PBRMaterial, Color3, Scene } from '@babylonjs/core';
+import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder.js';
+import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial.js';
+import { Color3 } from '@babylonjs/core/Maths/math.color.js';
+import type { Scene } from '@babylonjs/core/scene.js';
 import { townTravelRoutes, roadCenterlines, roadWidths, riverCenterline, riverWidth, townCenterRoundaboutRadius, type TownLayout, type Point } from '../../data/town-layout';
 import { samplePath, pointInPolygon, findPathIntersection } from '../../data/town-spatial';
 import { makeThiefArrivalRoute } from '../../data/town-life';
-import { BrickKit, STUD as S, COLORS as C, COURSE as H } from './kit';
+import { BrickKit, ThinBrickKit, STUD as S, COLORS as C, COURSE as H } from './kit';
 
 export const BOARD = { minX: -34.56, maxX: 34.56, minZ: -28.80, maxZ: 28.80 };
 const distanceTo = (p: Point, samples: Point[]) => {
@@ -20,7 +23,7 @@ export function randomFor(seed: string) {
 }
 
 export function buildWorld(scene: Scene, layout: TownLayout) {
-  const kit = new BrickKit(scene), rand = randomFor(layout.seed);
+  const kit = new BrickKit(scene), terrain = new ThinBrickKit(scene), rand = randomFor(layout.seed);
   const roads = Object.entries(roadCenterlines).map(([key, path]) => ({ samples: samplePath(path, 12), width: roadWidths[key as keyof typeof roadWidths] }));
   const river = samplePath(riverCenterline, 12);
   const reserved = layout.reservedPlots ?? layout.plots;
@@ -51,14 +54,14 @@ export function buildWorld(scene: Scene, layout: TownLayout) {
   for (let x = BOARD.minX+S; x < BOARD.maxX; x+=S*2) for (let z=BOARD.minZ+S;z<BOARD.maxZ;z+=S*2) {
     const p = {x,z}, road = isRoad(p), wet = isWater(p), house = inHouse(p,0.2);
     if (wet && !isBridgeDeck(p,0.08)) {
-      kit.brick(x,-0.10,z,2,2,rand()<0.25?C.waterLight:rand()<0.5?C.water:C.waterDeep,H/3,false);
-      if (rand()<0.16) kit.box(x,0.008,z,S*1.4,0.024,S*0.13,'#abdadd');
+      terrain.brick(x,-0.10,z,2,2,rand()<0.25?C.waterLight:rand()<0.5?C.water:C.waterDeep,H/3,false);
+      if (rand()<0.16) terrain.box(x,0.008,z,S*1.4,0.024,S*0.13,'#abdadd');
     } else if (road) {
       const cobbles = [C.roadLight,C.road,C.sand];
-      for (const dx of [-S/2,S/2]) for (const dz of [-S/2,S/2]) kit.brick(x+dx,0.01,z+dz,1,1,cobbles[Math.floor(rand()*cobbles.length)],H/3,false);
+      for (const dx of [-S/2,S/2]) for (const dz of [-S/2,S/2]) terrain.brick(x+dx,0.01,z+dz,1,1,cobbles[Math.floor(rand()*cobbles.length)],H/3,false);
     } else {
       const shore = isWater(p,0.55);
-      kit.brick(x,0.0,z,2,2,shore?C.sand:greens[Math.floor(rand()*greens.length)],H/3,!house);
+      terrain.brick(x,0.0,z,2,2,shore?C.sand:greens[Math.floor(rand()*greens.length)],H/3,!house);
     }
   }
   // Bridge built in a single local frame; its posts and deck share the same transform.
@@ -101,7 +104,7 @@ export function buildWorld(scene: Scene, layout: TownLayout) {
     kit.cylinder(p.x,0.72,p.z,0.07,1.0,C.black);
     kit.box(p.x,1.3,p.z,0.25,0.06,0.25,C.black);
     kit.cylinder(p.x,1.53,p.z,0.30,0.12,C.black,undefined,0.09);
-    const lightKit=new BrickKit(scene); lightKit.box(p.x,1.4,p.z,0.17,0.16,0.17,C.yellow);
+    const lightKit=new BrickKit(scene,undefined,'lamp-light'); lightKit.box(p.x,1.4,p.z,0.17,0.16,0.17,C.yellow);
     lamps.push(...lightKit.flush('lamp'));
   }
   // Trees and colourful low props share one occupancy list. Every entry is
@@ -181,12 +184,14 @@ export function buildWorld(scene: Scene, layout: TownLayout) {
   // Empty article lots are collision-only reservations. They intentionally
   // use the same ground as the rest of the diorama and receive no special
   // overlay, so trees and small props can naturally sit between them.
-  const meshes=kit.flush('world');
+  const terrainMeshes=terrain.flush('terrain');
+  const propMeshes=kit.flush('world');
+  const meshes=[...terrainMeshes,...propMeshes];
   const waterMeshes=meshes.filter(m=>[C.water,C.waterLight,C.waterDeep].includes(m.metadata.baseColor));
   for(const m of waterMeshes){const mat=m.material as PBRMaterial;mat.roughness=0.13;mat.metallic=0.08;mat.clearCoat.intensity=0.7;}
   const glints=meshes.filter(m=>m.metadata.baseColor==='#abdadd');
-  const table=MeshBuilder.CreateGround('studio-table',{width:200,height:200},scene);
+  const table=CreateGround('studio-table',{width:200,height:200},scene);
   table.position.y=-0.81; table.receiveShadows=true; table.isPickable=false;
   const tableMaterial=new PBRMaterial('matte-studio',scene);tableMaterial.albedoColor=Color3.FromHexString('#d6cfbc').toLinearSpace();tableMaterial.roughness=0.93;tableMaterial.metallic=0;table.material=tableMaterial;
-  return {meshes:[...meshes,...fountainMeshes],lamps,decor,table,bridge,glints,waterMeshes,isRoad,isWater,inHouse};
+  return {meshes:[...meshes,...fountainMeshes],shadowCasters:[...propMeshes,...fountainMeshes,...lamps],lamps,decor,table,bridge,glints,waterMeshes,isRoad,isWater,inHouse};
 }
