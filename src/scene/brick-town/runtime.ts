@@ -15,6 +15,9 @@ import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial.js';
 import { Scene } from '@babylonjs/core/scene.js';
 import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator.js';
 import { VertexBuffer } from '@babylonjs/core/Buffers/buffer.js';
+// Scene.pick is an optional Babylon extension; this side-effect registration is
+// required after switching from the barrel import to tree-shaken modules.
+import '@babylonjs/core/Culling/ray.js';
 import { BOARD, buildWorld, randomFor } from './world';
 import { buildHouse, FLOOR_HEIGHT, GROUND_Y } from './buildings';
 import { buildMinifig } from './minifig';

@@ -2,7 +2,8 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { ElementType } from 'react';
 import type { SceneAnchor, TownPost } from './TownScene';
 import { friendLinks, siteConfig, type ProfileLinkIcon } from '../config/site';
-import { riverCenterline, roadCenterlines, townCenterRing, townCenterRingConnectors, type TownLayout } from '../data/town-layout';
+import type { TownLayout } from '../data/town-layout';
+import { createTownMapModel } from '../data/town-map';
 
 type SidebarPanel = 'profile' | 'series' | 'categories' | 'category-posts' | 'tags' | 'tag-posts' | 'friends';
 type MainSurface = 'town' | 'article' | 'archive';
@@ -480,6 +481,21 @@ function ExplorePanel({ panel, categories, tags, posts, activeCategory, activeTa
   return <section className="main-explore-panel"><span className="section-eyebrow">TAGS</span><h2>标签</h2><div className="main-tags">{tags.map((tag) => <button key={tag} className={activeTag === tag ? 'is-selected' : ''} aria-pressed={activeTag === tag} onClick={() => onTag(tag)}>#{tag}</button>)}</div></section>;
 }
 
-function MiniTownMap({ post, layout }: { post: TownPost; layout: TownLayout }) { const plot = layout.plots.find((item) => item.postId === post.id || item.seriesPostIds?.includes(post.id)); const toPoint = (point: { x: number; z: number }) => `${((point.x + 20) / 44) * 100},${((point.z + 18) / 48) * 100}`; const path = (points: { x: number; z: number }[]) => points.map((point, index) => `${index ? 'L' : 'M'} ${toPoint(point)}`).join(' '); return <div className="article-location" aria-label={`文章建筑在小镇中的位置：${post.title}`}><svg viewBox="0 0 100 100" role="img" aria-hidden="true"><path className="mini-map-water" d={path(riverCenterline)} />{Object.values(roadCenterlines).map((road) => <path className="mini-map-road" d={path(road)} key={road[0].x + '-' + road[0].z} />)}<path className="mini-map-road mini-map-center-ring" d={path(townCenterRing)} />{townCenterRingConnectors.map((connector) => <path className="mini-map-road mini-map-center-connector" d={path(connector)} key={connector[0].x + '-' + connector[0].z} />)}{layout.plots.map((item) => <rect className={`mini-map-building ${item.postId === post.id || item.seriesPostIds?.includes(post.id) ? 'is-selected' : ''}`} key={item.id} x={((item.x - item.width / 2 + 20) / 44) * 100} y={((item.z - item.depth / 2 + 18) / 48) * 100} width={(item.width / 44) * 100} height={(item.depth / 48) * 100} rx=".8" />)}{plot && <circle className="mini-map-marker" cx={((plot.x + 20) / 44) * 100} cy={((plot.z + 18) / 48) * 100} r="3" />}</svg></div>; }
+function MiniTownMap({ post, layout }: { post: TownPost; layout: TownLayout }) {
+  const map = createTownMapModel(layout, post.id);
+  const path = (points: { x: number; z: number }[]) => points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.z}`).join(' ');
+  const polygonFor = (building: typeof map.buildings[number]) => building.points?.map((point) => `${point.x},${point.z}`).join(' ') ?? '';
+  return <div className="article-location" aria-label={`文章建筑在小镇中的位置：${post.title}`}>
+    <svg className="pixel-town-map" viewBox={`${map.bounds.minX} ${map.bounds.minZ} ${map.bounds.maxX - map.bounds.minX} ${map.bounds.maxZ - map.bounds.minZ}`} shapeRendering="crispEdges" role="img" aria-hidden="true">
+      <rect className="mini-map-ground" x={map.bounds.minX} y={map.bounds.minZ} width={map.bounds.maxX - map.bounds.minX} height={map.bounds.maxZ - map.bounds.minZ} />
+      <path className="mini-map-water" d={path(map.river.points)} style={{ strokeWidth: map.river.width }} />
+      {map.roads.map((road, index) => <path className="mini-map-road" d={path(road.points)} style={{ strokeWidth: road.width }} key={`road-${index}`} />)}
+      <path className="mini-map-road mini-map-center-ring" d={path(map.centerRing.points)} style={{ strokeWidth: map.centerRing.width }} />
+      {map.centerConnectors.map((connector, index) => <path className="mini-map-road mini-map-center-connector" d={path(connector.points)} style={{ strokeWidth: connector.width }} key={`connector-${index}`} />)}
+      {map.buildings.map((building) => <polygon className={`mini-map-building ${building === map.selected ? 'is-selected' : ''}`} key={building.id} points={polygonFor(building)} />)}
+      {map.selected && <circle className="mini-map-marker" cx={map.selected.x} cy={map.selected.z} r="1.8" />}
+    </svg>
+  </div>;
+}
 
 function EmptyView({ title, copy, action, onAction }: { title: string; copy: string; action: string; onAction: () => void }) { return <div className="empty-view"><h2>{title}</h2><p>{copy}</p><button onClick={onAction}>{action} {icon('arrow')}</button></div>; }

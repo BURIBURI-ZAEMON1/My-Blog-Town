@@ -12,10 +12,15 @@ function load(path){
   const localRequire=id=>id.startsWith('.')?load(resolve(dirname(absolute),id.endsWith('.ts')?id:`${id}.ts`)):require(id);
   new Function('require','module','exports',output)(localRequire,module,module.exports);return module.exports;
 }
-const {createTownLayout,isBuildablePlot}=load('src/data/town-layout.ts');
+const {createTownLayout,isBuildablePlot,townBoard}=load('src/data/town-layout.ts');
+const {createTownMapModel,TOWN_MAP_MIRROR_X}=load('src/data/town-map.ts');
 const {buildHouse,FLOOR_HEIGHT}=load('src/scene/brick-town/buildings.ts');
 const {roundedBox}=load('src/scene/brick-town/kit.ts');
 const {buildWorld,BOARD}=load('src/scene/brick-town/world.ts');
+assert.deepEqual(BOARD,townBoard,'Babylon world and mini-map use different coordinate bounds');
+assert.equal(TOWN_MAP_MIRROR_X,true,'mini-map should use the corrected left-right orientation');
+const runtimeSource=readFileSync('src/scene/brick-town/runtime.ts','utf8');
+assert(runtimeSource.includes("@babylonjs/core/Culling/ray.js"),'tree-shaken runtime did not register Babylon ray picking');
 const {createRainField,getCameraPanBounds,clampToPanBounds}=load('src/scene/brick-town/view.ts');
 const engine=new NullEngine(),scene=new Scene(engine);
 let rainState=123456789;
@@ -65,6 +70,14 @@ for(const tree of world.decor){
   assert(tree.x>BOARD.minX&&tree.x<BOARD.maxX&&tree.z>BOARD.minZ&&tree.z<BOARD.maxZ,'tree outside board');
 }
 const many=createTownLayout('growth',Array.from({length:8},(_,i)=>({id:`post-${i}`})));
+const mapModel=createTownMapModel(many,'post-7');
+assert.equal(mapModel.buildings.length,many.plots.length,'mini-map omitted a generated building');
+assert(mapModel.selected?.postIds.includes('post-7'),'mini-map did not select the article building');
+for(const building of mapModel.worldBuildings){
+  const plot=many.plots.find(candidate=>candidate.id===building.id);
+  assert(plot,'mini-map invented a building not present in the world layout');
+  assert.deepEqual({x:building.x,z:building.z,width:building.width,depth:building.depth},{x:plot.x,z:plot.z,width:plot.width,depth:plot.depth},'mini-map transformed a world building coordinate');
+}
 let overflowError='';
 try{createTownLayout('capacity',Array.from({length:700},(_,i)=>({id:`capacity-${i}`})));}
 catch(error){overflowError=String(error?.message??error);}

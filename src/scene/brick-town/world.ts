@@ -2,12 +2,12 @@ import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder.js';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial.js';
 import { Color3 } from '@babylonjs/core/Maths/math.color.js';
 import type { Scene } from '@babylonjs/core/scene.js';
-import { townTravelRoutes, roadCenterlines, roadWidths, riverCenterline, riverWidth, townCenterRoundaboutRadius, type TownLayout, type Point } from '../../data/town-layout';
+import { townBoard, townTravelRoutes, roadCenterlines, roadWidths, riverCenterline, riverWidth, townCenterRoundaboutRadius, type TownLayout, type Point } from '../../data/town-layout';
 import { samplePath, pointInPolygon, findPathIntersection } from '../../data/town-spatial';
 import { makeThiefArrivalRoute } from '../../data/town-life';
 import { BrickKit, ThinBrickKit, STUD as S, COLORS as C, COURSE as H } from './kit';
 
-export const BOARD = { minX: -34.56, maxX: 34.56, minZ: -28.80, maxZ: 28.80 };
+export const BOARD = townBoard;
 const distanceTo = (p: Point, samples: Point[]) => {
   let best = Infinity;
   for (let i = 1; i < samples.length; i++) {
