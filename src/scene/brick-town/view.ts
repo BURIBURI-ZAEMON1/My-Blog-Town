@@ -46,3 +46,20 @@ export const clampToPanBounds = (point: { x: number; z: number }, bounds: PanBou
   x: Math.max(bounds.minX, Math.min(bounds.maxX, point.x)),
   z: Math.max(bounds.minZ, Math.min(bounds.maxZ, point.z)),
 });
+
+export const getDragPanDelta = (
+  alpha: number,
+  beta: number,
+  deltaX: number,
+  deltaY: number,
+  worldUnitsPerPixel: number,
+) => {
+  // Camera-style panning: dragging toward a screen edge moves the viewed area
+  // toward that edge. This is the inverse of the old "grab the map" motion.
+  const horizontal = deltaX * worldUnitsPerPixel;
+  const vertical = -deltaY * worldUnitsPerPixel / Math.max(0.001, Math.cos(beta));
+  return {
+    x: Math.sin(alpha) * horizontal + Math.cos(alpha) * vertical,
+    z: -Math.cos(alpha) * horizontal + Math.sin(alpha) * vertical,
+  };
+};

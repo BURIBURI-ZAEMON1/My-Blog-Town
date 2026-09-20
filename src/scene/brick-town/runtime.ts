@@ -25,13 +25,13 @@ import { createLife, tickLife, type Citizen } from './life';
 import { weatherIsRainy } from '../../data/town-rain';
 import type { TownLayout } from '../../data/town-layout';
 import type { TownSceneProps } from './types';
-import { clampToPanBounds, createRainField, getCameraPanBounds } from './view';
+import { clampToPanBounds, createRainField, getCameraPanBounds, getDragPanDelta } from './view';
 
 export type SceneState = Pick<TownSceneProps,'activePostId'|'hoveredPostId'|'query'|'category'|'tag'|'colorMode'|'reducedMotion'>;
 export type SceneCallbacks = Pick<TownSceneProps,'onHoverPost'|'onResolvePostAnchor'|'onSelectPost'>;
 const color=(hex:string)=>Color3.FromHexString(hex);
 
-export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:TownSceneProps['posts'],initial:SceneState,callbacks:()=>SceneCallbacks) {
+export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:TownSceneProps['posts'],initial:SceneState,callbacks:()=>SceneCallbacks,onFirstFrame?:()=>void) {
   const mobile=canvas.clientWidth<720;
   const engine=new Engine(canvas,true,{stencil:true,preserveDrawingBuffer:false,powerPreference:'default'});
   // A 1.25 DPR ceiling keeps bevel highlights crisp while avoiding the 2.25x
@@ -177,9 +177,8 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
       down.lastX=e.clientX;down.lastY=e.clientY;
       if(Math.hypot(e.clientX-down.x,e.clientY-down.y)>7){
         const perPixel=(camera.orthoRight!-camera.orthoLeft!)/canvas.clientWidth;
-        const right=new Vector3(Math.sin(camera.alpha),0,-Math.cos(camera.alpha));
-        const forward=new Vector3(Math.cos(camera.alpha),0,Math.sin(camera.alpha));
-        camera.target.addInPlace(right.scale(-dx*perPixel)).addInPlace(forward.scale(dy*perPixel/Math.cos(camera.beta)));
+        const pan=getDragPanDelta(camera.alpha,camera.beta,dx,dy,perPixel);
+        camera.target.x+=pan.x;camera.target.z+=pan.z;
         clampCameraTarget();canvas.style.cursor='grabbing';
         return;
       }
@@ -232,6 +231,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     if(rainy&&!state.reducedMotion){for(let i=0;i<drops.length;i++){const d=drops[i];d.y-=dt*d.speed;if(d.y<0.1)d.y+=13;const offset=i*6;rainPositions[offset]=d.x;rainPositions[offset+1]=d.y;rainPositions[offset+2]=d.z;rainPositions[offset+3]=d.x-0.12;rainPositions[offset+4]=d.y-0.65;rainPositions[offset+5]=d.z-0.04;}rainMesh.updateVerticesData(VertexBuffer.PositionKind,rainPositions,false,false);}
     for(const m of world.glints)m.visibility=0.65+Math.sin(elapsed*1.5)*0.15;
     const renderStarted=performance.now();scene.render();const renderCost=performance.now()-renderStarted;frames++;
+    if(frames===1)onFirstFrame?.();
     if(ao&&renderCost>55){slowRenderFrames++;if(slowRenderFrames>=4){ao.dispose();ao=undefined;canvas.dataset.adaptiveAo='off';}}else slowRenderFrames=Math.max(0,slowRenderFrames-1);
     if(frames===1||now-lastDiagnostics>500)publishDiagnostics(now);
   }

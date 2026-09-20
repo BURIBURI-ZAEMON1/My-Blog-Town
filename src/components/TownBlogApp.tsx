@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { ElementType } from 'react';
 import type { SceneAnchor, TownPost } from './TownScene';
+import TownLoading from './TownLoading';
+import type { TownSceneProps } from '../scene/brick-town/types';
 import { friendLinks, siteConfig, type ProfileLinkIcon } from '../config/site';
 import type { TownLayout } from '../data/town-layout';
 import { createTownMapModel } from '../data/town-map';
@@ -21,7 +23,36 @@ type ReturnContext = {
 
 type Props = { posts: TownPost[]; layout: TownLayout; initialSurface?: MainSurface; initialPostId?: string };
 
-const TownScene = lazy(() => import('./TownScene'));
+const TownScene = lazy(async () => {
+  // Fetch the large Babylon runtime in parallel with the React scene wrapper,
+  // avoiding a second network waterfall after the wrapper mounts.
+  const [component] = await Promise.all([
+    import('./TownScene'),
+    import('../scene/brick-town/runtime'),
+  ]);
+  return component;
+});
+
+type TownStageProps = TownSceneProps & {
+  hoveredPost?: TownPost;
+  hoverAnchor?: SceneAnchor;
+};
+
+function TownStage({ hoveredPost, hoverAnchor, ...sceneProps }: TownStageProps) {
+  const [settled, setSettled] = useState(false);
+  return <div className="town-stage-wrap">
+    <Suspense fallback={null}>
+      <TownScene
+        {...sceneProps}
+        onLoadingStart={() => setSettled(false)}
+        onFirstFrame={() => setSettled(true)}
+        onInitializationError={() => setSettled(true)}
+      />
+    </Suspense>
+    {!settled && <TownLoading reducedMotion={sceneProps.reducedMotion} />}
+    <TownTooltip post={hoveredPost} anchor={hoverAnchor} />
+  </div>;
+}
 
 const icon = (name: string) => {
   const paths: Record<string, string> = {
@@ -361,7 +392,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
         </header>
 
         {surface === 'town' && <section className="town-home">
-          <div className="town-stage-wrap"><Suspense fallback={<div className="town-loading" role="status">正在绘制小镇…</div>}><TownScene posts={posts} layout={layout} activePostId={selectedPostId} hoveredPostId={hoveredPostId} query={query} category={highlightCategory} tag={highlightTag} categoryPreview={Boolean(previewCategory)} tagPreview={Boolean(previewTag)} colorMode={colorMode} reducedMotion={reducedMotion} onHoverPost={onHoverPost} onResolvePostAnchor={onResolvePostAnchor} onSelectPost={openArticle} /></Suspense><TownTooltip post={hoveredPost} anchor={hoverAnchor} /></div>
+          <TownStage posts={posts} layout={layout} activePostId={selectedPostId} hoveredPostId={hoveredPostId} query={query} category={highlightCategory} tag={highlightTag} categoryPreview={Boolean(previewCategory)} tagPreview={Boolean(previewTag)} colorMode={colorMode} reducedMotion={reducedMotion} onHoverPost={onHoverPost} onResolvePostAnchor={onResolvePostAnchor} onSelectPost={openArticle} hoveredPost={hoveredPost} hoverAnchor={hoverAnchor} />
           <div className="town-caption"><span><i className="caption-dot" /> {siteConfig.title} · 小镇地图</span><span>文章建筑 / {layout.plots.length} buildings / {posts.length} article floors</span><span className="caption-spacer" /><button onClick={() => { setSidebarPanel('profile'); navigate('archive'); }}>打开完整档案 {icon('arrow')}</button></div>
           <RecentPosts posts={filteredPosts.slice(0, 5)} hasFilter={Boolean(query || activeCategory || activeTag)} onOpen={openArticle} onClear={clearFilters} sectionRef={recentRef} />
         </section>}
