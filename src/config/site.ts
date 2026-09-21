@@ -5,6 +5,7 @@ export interface ProfileLink {
   label: string;
   url: string;
   icon: ProfileLinkIcon;
+  logo: string;
 }
 
 export interface FriendLink {
@@ -29,10 +30,10 @@ export const siteConfig = {
     headline: '真不是蚊子 QAQ',
     bio: '什么都不会的后端萌新 QAQ',
     links: [
-      { id: 'email', label: 'Email', url: 'mailto:3511457481@qq.com', icon: 'email' },
-      { id: 'github', label: 'GitHub', url: 'https://github.com/BURIBURI-ZAEMON1', icon: 'github' },
-      { id: 'steam', label: 'Steam', url: 'https://steamcommunity.com/profiles/76561199347692185/', icon: 'steam' },
-      { id: 'bilibili', label: 'Bilibili', url: 'https://space.bilibili.com/326297088', icon: 'bilibili' },
+      { id: 'email', label: 'Email', url: 'mailto:3511457481@qq.com', icon: 'email', logo: '/assets/links/email.svg' },
+      { id: 'github', label: 'GitHub', url: 'https://github.com/BURIBURI-ZAEMON1', icon: 'github', logo: '/assets/links/github.svg' },
+      { id: 'steam', label: 'Steam', url: 'https://steamcommunity.com/profiles/76561199347692185/', icon: 'steam', logo: '/assets/links/steam.svg' },
+      { id: 'bilibili', label: 'Bilibili', url: 'https://space.bilibili.com/326297088', icon: 'bilibili', logo: '/assets/links/bilibili.svg' },
     ] satisfies ProfileLink[],
   },
   copyright: '2026 © 黑蚊子的门',

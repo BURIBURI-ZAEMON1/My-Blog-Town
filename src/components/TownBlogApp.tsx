@@ -3,7 +3,7 @@ import type { ElementType } from 'react';
 import type { SceneAnchor, TownPost } from './TownScene';
 import TownLoading from './TownLoading';
 import type { TownSceneProps } from '../scene/brick-town/types';
-import { friendLinks, siteConfig, type ProfileLinkIcon } from '../config/site';
+import { friendLinks, siteConfig } from '../config/site';
 import type { TownLayout } from '../data/town-layout';
 import { createTownMapModel } from '../data/town-map';
 
@@ -71,16 +71,6 @@ const icon = (name: string) => {
     chevron: 'm9 6 6 6-6 6',
   };
   return <svg aria-hidden="true" viewBox="0 0 24 24" className="icon"><path d={paths[name] ?? paths.home} /></svg>;
-};
-
-const profileLinkIcon = (name: ProfileLinkIcon) => {
-  const paths: Record<ProfileLinkIcon, string[]> = {
-    email: ['M3.5 6h17v12h-17z', 'm4.5 8 4 3.2a5.4 5.4 0 0 0 7 0L20 8'],
-    github: ['M12 3.5a8.5 8.5 0 0 0-2.7 16.6c.4.1.6-.2.6-.4v-1.7c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 0 1.6 1 1.6 1 .9 1.6 2.3 1.1 2.8.8.1-.7.4-1.1.7-1.3-2.2-.3-4.6-1.1-4.6-5a3.9 3.9 0 0 1 1-2.7 3.6 3.6 0 0 1 .1-2.7s.9-.3 2.8 1a9.7 9.7 0 0 1 5.2 0c2-1.3 2.8-1 2.8-1a3.6 3.6 0 0 1 .1 2.7 3.9 3.9 0 0 1 1 2.7c0 3.9-2.4 4.7-4.6 5 .4.3.7 1 .7 1.9v2.4c0 .3.2.5.7.4A8.5 8.5 0 0 0 12 3.5Z'],
-    steam: ['M3.2 14.5 5.8 15.7', 'M10.4 13.9 13.8 10.9', 'M8 13a3.2 3.2 0 1 1 0 6.4A3.2 3.2 0 0 1 8 13Z', 'M16.8 3.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z', 'M16.8 5.8a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4Z'],
-    bilibili: ['m8 7-2.2-2.2M16 7l2.2-2.2', 'M5 7.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z', 'M8.5 12v2.5M15.5 12v2.5'],
-  };
-  return <svg className={`profile-link-icon profile-link-icon-${name}`} viewBox="0 0 24 24" aria-hidden="true">{paths[name].map((path, index) => <path d={path} key={index} />)}</svg>;
 };
 
 const formatDate = (value: string) => {
@@ -414,7 +404,7 @@ function SidebarContent({ panel, posts, categories, tags, activeCategory, active
     if (!currentSeriesPosts.length) return null;
     return <div className="sidebar-panel series-panel"><SidebarPanelHeader title={currentSeriesPosts[0]?.series ?? '当前系列'} eyebrow="SERIES" /><SeriesDirectory posts={currentSeriesPosts} selectedPostId={selectedPostId} onOpenArticle={onOpenArticle} /></div>;
   }
-  return <div className="profile-panel"><img className="profile-avatar" src={siteConfig.profile.avatar} alt={siteConfig.profile.name} /><span className="panel-eyebrow">ABOUT ME</span><h2>{siteConfig.profile.name}</h2><strong className="profile-headline">{siteConfig.profile.headline}</strong><p>{siteConfig.profile.bio}</p><div className="profile-links">{siteConfig.profile.links.map((link) => <a key={link.id} href={link.url} aria-label={link.label} title={link.label} target={link.url.startsWith('http') ? '_blank' : undefined} rel={link.url.startsWith('http') ? 'noreferrer noopener' : undefined}>{profileLinkIcon(link.icon)}<span className="visually-hidden">{link.label}</span></a>)}</div></div>;
+  return <div className="profile-panel"><img className="profile-avatar" src={siteConfig.profile.avatar} alt={siteConfig.profile.name} /><span className="panel-eyebrow">ABOUT ME</span><h2>{siteConfig.profile.name}</h2><strong className="profile-headline">{siteConfig.profile.headline}</strong><p>{siteConfig.profile.bio}</p><div className="profile-links">{siteConfig.profile.links.map((link) => <a key={link.id} href={link.url} aria-label={link.label} title={link.label} target={link.url.startsWith('http') ? '_blank' : undefined} rel={link.url.startsWith('http') ? 'noreferrer noopener' : undefined}><img className="profile-link-logo" src={link.logo} alt="" aria-hidden="true" /> <span className="visually-hidden">{link.label}</span></a>)}</div></div>;
 }
 
 function SidebarPanelHeader({ title, eyebrow, onBack }: { title: string; eyebrow: string; onBack?: () => void }) { return <div className="sidebar-panel-header">{onBack && <button onClick={onBack} aria-label="返回面板">{icon('back')}</button>}<div><span>{eyebrow}</span><strong>{title}</strong></div></div>; }
