@@ -171,12 +171,13 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .profile-panel { display: flex; flex-direction: column; align-items: flex-start; }
 .profile-avatar { width: 76px; height: 76px; margin-bottom: 15px; border: 1px solid var(--line-strong); border-radius: 50%; object-fit: cover; box-shadow: 5px 6px 0 rgba(74, 64, 44, .08); }
 .profile-headline { margin: 2px 0 7px; color: var(--sage); font-family: var(--serif); font-size: 11px; font-weight: 600; }
-.profile-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--line); }
-.profile-links a { display: inline-flex; align-items: center; gap: 4px; padding: 5px 7px; border: 1px solid var(--line); color: #6c776c; text-decoration: none; font-family: var(--mono); font-size: 8px; }
-.profile-links a:hover { border-color: var(--line-strong); background: rgba(255,255,255,.4); color: var(--ink); }
-.profile-links .icon { width: 10px; height: 10px; }
+.profile-links { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, 31px); gap: 8px; max-height: 148px; margin-top: 15px; padding: 13px 4px 2px 0; overflow-x: hidden; overflow-y: auto; border-top: 1px solid var(--line); scrollbar-width: thin; scrollbar-color: rgba(150,133,96,.55) transparent; }
+.profile-links a { display: inline-flex; align-items: center; justify-content: center; width: 31px; height: 31px; padding: 0; border: 1px solid var(--line); border-radius: 7px; background: rgba(255,255,255,.38); color: #6c776c; text-decoration: none; font-family: var(--mono); font-size: 8px; }
+.profile-links::-webkit-scrollbar { width: 6px; }
+.profile-links::-webkit-scrollbar-track { background: transparent; }
+.profile-links::-webkit-scrollbar-thumb { border-radius: 6px; background: rgba(150,133,96,.55); }
+.profile-links a:hover { border-color: var(--line-strong); background: rgba(255,255,255,.72); color: var(--ink); }
 .profile-link-logo { display: block; width: 17px; height: 17px; object-fit: contain; }
-.profile-link-logo[src$="github.svg"] { width: 18px; height: 18px; }
 .friend-avatar { overflow: hidden; }
 .friend-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .town-loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .08em; }
@@ -317,20 +318,16 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 
 /* Compact, recognizable profile destinations. */
 .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
-.profile-links { gap: 8px; }
-.profile-links a { position: relative; justify-content: center; width: 31px; height: 31px; padding: 0; border-radius: 7px; color: #657468; }
+.profile-links a { position: relative; color: #657468; }
 .profile-links a:hover { transform: translateY(-2px); }
-.profile-link-icon { display: block; width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
-.profile-link-icon-github path { fill: currentColor; stroke: none; }
-.profile-link-icon-bilibili { stroke-width: 1.75; }
 
 /* Site identity and friend names must remain legible at night. */
 .mode-night .brand-name,
 .mode-night .top-logo,
 .mode-night .friend-row strong,
 .mode-night .main-friend-row strong { color: #fff7e8; text-shadow: 0 1px 0 rgba(0, 0, 0, .32); }
-.mode-night .profile-links a { border-color: rgba(238, 229, 205, .24); background: rgba(255, 255, 255, .045); color: #dce9dc; }
-.mode-night .profile-links a:hover { border-color: rgba(155, 199, 167, .72); background: rgba(155, 199, 167, .12); color: #fff7e8; }
+.mode-night .profile-links a { border-color: rgba(238, 229, 205, .24); background: #f2ead9; color: #29332d; }
+.mode-night .profile-links a:hover { border-color: rgba(155, 199, 167, .72); background: #fff7e8; color: #1f2924; }
 
 /* Full night-mode text audit: no day-mode dark gray is allowed to leak through. */
 .mode-night .profile-panel h2,
@@ -408,8 +405,6 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .mode-night .card-bottom,
 .mode-night .archive-row .icon { color: #a9c7ad; }
 
-.profile-link-icon-steam { stroke-width: 1.45; }
-.profile-link-icon-steam path:nth-child(2) { stroke-width: 2.35; }
 
 /* Brick diorama is lit in linear space; CSS filters must not re-grade its PBR. */
 .brick-town-host canvas, .mode-night .brick-town-host canvas { filter: none; cursor: grab; touch-action: pan-y; }

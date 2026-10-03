@@ -1,8 +1,8 @@
 import { getCollection } from 'astro:content';
 import { createTownLayout } from '../data/town-layout';
+import { siteConfig } from '../config/site';
 import { renderArticleMarkdown } from './markdown';
 
-const WORLD_SEED = 'heavens-door-town-v1';
 
 const buildSiteData = async () => {
   const now = new Date();
@@ -57,7 +57,7 @@ const buildSiteData = async () => {
 
   return {
     posts,
-    layout: createTownLayout(WORLD_SEED, posts),
+    layout: createTownLayout(siteConfig.townSeed, posts),
   };
 };
 

@@ -1,10 +1,7 @@
-export type ProfileLinkIcon = 'email' | 'github' | 'steam' | 'bilibili';
-
 export interface ProfileLink {
   id: string;
   label: string;
   url: string;
-  icon: ProfileLinkIcon;
   logo: string;
 }
 
@@ -16,7 +13,26 @@ export interface FriendLink {
   description?: string;
 }
 
-export const siteConfig = {
+interface SiteConfig {
+  title: string;
+  shortTitle: string;
+  tagline: string;
+  description: string;
+  siteUrl: string;
+  logo: string;
+  language: string;
+  townSeed: string;
+  profile: {
+    name: string;
+    avatar: string;
+    headline: string;
+    bio: string;
+    links: ProfileLink[];
+  };
+  copyright: string;
+}
+
+export const siteConfig: SiteConfig = {
   title: '黑蚊子的门',
   shortTitle: '黑蚊子的门',
   tagline: 'Heaven’s Door',
@@ -24,17 +40,18 @@ export const siteConfig = {
   siteUrl: 'https://www.heavensdoor1.top/',
   logo: '/assets/profile/logo.png',
   language: 'zh-CN',
+  townSeed: 'heavens-door-town-v1',
   profile: {
     name: '黑蚊子多',
     avatar: '/assets/profile/avatar.jpg',
     headline: '真不是蚊子 QAQ',
     bio: '什么都不会的后端萌新 QAQ',
     links: [
-      { id: 'email', label: 'Email', url: 'mailto:3511457481@qq.com', icon: 'email', logo: '/assets/links/email.svg' },
-      { id: 'github', label: 'GitHub', url: 'https://github.com/BURIBURI-ZAEMON1', icon: 'github', logo: '/assets/links/github.svg' },
-      { id: 'steam', label: 'Steam', url: 'https://steamcommunity.com/profiles/76561199347692185/', icon: 'steam', logo: '/assets/links/steam.svg' },
-      { id: 'bilibili', label: 'Bilibili', url: 'https://space.bilibili.com/326297088', icon: 'bilibili', logo: '/assets/links/bilibili.svg' },
-    ] satisfies ProfileLink[],
+      { id: 'email', label: 'Email', url: 'mailto:3511457481@qq.com', logo: '/assets/links/email.svg' },
+      { id: 'github', label: 'GitHub', url: 'https://github.com/BURIBURI-ZAEMON1', logo: '/assets/links/github.svg' },
+      { id: 'steam', label: 'Steam', url: 'https://steamcommunity.com/profiles/76561199347692185/', logo: '/assets/links/steam.svg' },
+      { id: 'bilibili', label: 'Bilibili', url: 'https://space.bilibili.com/326297088', logo: '/assets/links/bilibili.svg' },
+    ],
   },
   copyright: '2026 © 黑蚊子的门',
 };

@@ -36,9 +36,7 @@ const cover = selectedPost?.cover ? new URL(selectedPost.cover, siteConfig.siteU
     <meta property="og:image" content={cover} />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="canonical" href={canonical} />
-    <link rel="icon" href="/favicon.ico" sizes="any" />
-    <link rel="icon" href="/favicon.png" type="image/png" />
-    <link rel="apple-touch-icon" href="/favicon.png" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>{pageTitle}</title>
   </head>
   <body><TownBlogApp client:load posts={posts} layout={layout} initialSurface={initialSurface} initialPostId={initialPostId} /></body>
