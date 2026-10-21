@@ -595,8 +595,18 @@ function ArticleView({ post, layout, related, scrollRoot, onBack, onOpen }: { po
 }
 
 function ArticleContents({ headings, activeHeadingId }: { headings: ArticleHeading[]; activeHeadingId?: string }) {
+  const activeItemRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    activeItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [activeHeadingId]);
   const jumpTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  return <nav className="article-contents" aria-label="文章目录"> <span>文章目录</span>{headings.map((heading) => <button key={heading.id} aria-current={heading.id === activeHeadingId ? 'location' : undefined} className={`toc-level-${heading.level} ${heading.id === activeHeadingId ? 'is-active' : ''}`} onClick={() => jumpTo(heading.id)}>{heading.text}</button>)}</nav>;
+  return <nav className="article-contents" aria-label="文章目录">
+    <div className="toc-header"><span>文章目录</span><b>{String(headings.length).padStart(2, '0')} SECTIONS</b></div>
+    <div className="toc-list">
+      <i className="toc-rail" aria-hidden="true" />
+      {headings.map((heading, index) => <button ref={heading.id === activeHeadingId ? activeItemRef : undefined} key={heading.id} aria-current={heading.id === activeHeadingId ? 'location' : undefined} className={`toc-item toc-level-${heading.level} ${heading.id === activeHeadingId ? 'is-active' : ''}`} onClick={() => jumpTo(heading.id)}><span className="toc-item-index">{String(index + 1).padStart(2, '0')}</span><span className="toc-item-label">{heading.text}</span></button>)}
+    </div>
+  </nav>;
 }
 
 function SeriesDirectory({ posts, selectedPostId, onOpenArticle }: { posts: TownPost[]; selectedPostId?: string; onOpenArticle: (id: string) => void }) { return <div className="series-directory"><span className="series-directory-label">当前系列 · {posts[0]?.series}</span>{posts.map((post, index) => <button key={post.id} className={post.id === selectedPostId ? 'is-current' : ''} onClick={() => onOpenArticle(post.id)}><b>{index + 1}:</b><span>{post.title}</span></button>)}</div>; }
