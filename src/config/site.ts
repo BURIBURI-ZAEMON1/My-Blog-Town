@@ -45,7 +45,7 @@ export const siteConfig: SiteConfig = {
     name: '黑蚊子多',
     avatar: '/assets/profile/avatar.jpg',
     headline: '真不是蚊子 QAQ',
-    bio: '什么都不会的后端萌新 QAQ',
+    bio: '',
     links: [
       { id: 'email', label: 'Email', url: 'mailto:3511457481@qq.com', logo: '/assets/links/email.svg' },
       { id: 'github', label: 'GitHub', url: 'https://github.com/BURIBURI-ZAEMON1', logo: '/assets/links/github.svg' },
@@ -64,4 +64,5 @@ export const friendLinks: FriendLink[] = [
   { id: 'qingniao', nickname: '青鸟', avatar: '/assets/friends/qingniao.jpg', url: 'https://blog.bluebird.icu' },
   { id: 'ximo', nickname: '惜寞', avatar: '/assets/friends/ximo.jpg', url: 'https://lonesome.cn' },
   { id: 'diamond-boy', nickname: 'Diamond boy', avatar: '/assets/friends/Diamond_boy.png', url: 'https://blog.stargazer-luciddream.top' },
+  { id: 'true', nickname: '十且八', avatar: '/assets/friends/true.jpg', url: 'https://sqbtt.cn' },
 ];
