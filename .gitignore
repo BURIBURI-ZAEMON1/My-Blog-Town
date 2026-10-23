@@ -39,3 +39,11 @@ docs/*
 !docs/USAGE.md
 docs/engineering/
 outputs/
+
+.agents/
+.agent/
+.claude/
+.gemini/
+.codex/
+.impeccable/
+PRODUCT.md
