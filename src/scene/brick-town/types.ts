@@ -27,6 +27,7 @@ export type TownSceneProps = {
   layout?: TownLayout;
   activePostId?: string;
   hoveredPostId?: string;
+  newPostIds?: readonly string[];
   query: string;
   category?: string;
   tag?: string;

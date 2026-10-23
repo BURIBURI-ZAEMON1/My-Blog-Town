@@ -1186,3 +1186,54 @@ body { font-family: var(--sans); }
   .town-caption > span, .town-caption button { white-space: nowrap; }
   .town-caption .caption-spacer { display: none; }
 }
+
+/* Recent, unread article callouts share the town's blue signal color. */
+.town-new-posts-overlay {
+  --notice-ink: #244775;
+  --notice-line: #6589b3;
+  --notice-dot: #447dc4;
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+}
+.town-new-post-lines { position: absolute; inset: 0; overflow: hidden; }
+.town-new-post-lines path { fill: none; stroke: var(--notice-line); stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+.town-new-post-lines circle { fill: var(--notice-line); }
+.town-new-post-label {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--notice-ink);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+.town-new-post-label > span {
+  color: transparent;
+  background: linear-gradient(105deg, var(--notice-ink) 35%, #b6d7ff 49%, var(--notice-ink) 63%);
+  background-size: 260% 100%;
+  background-position: 160% 0;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: town-new-post-sheen 5.5s ease-in-out infinite;
+}
+.town-new-post-label:hover { --notice-ink: var(--blue); }
+.town-new-post-label:focus-visible { outline: 2px solid var(--notice-dot); outline-offset: 2px; }
+.town-new-post-dot { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--notice-dot); box-shadow: 0 0 7px rgba(85, 145, 224, .35); }
+.mode-night .town-new-posts-overlay { --notice-ink: #d0e4ff; --notice-line: #82a3ca; --notice-dot: #9bc6ff; }
+@keyframes town-new-post-sheen { 0%, 40% { background-position: 160% 0; } 75%, 100% { background-position: -60% 0; } }
+.town-new-posts-overlay[data-reduced-motion="true"] .town-new-post-label > span { animation: none; background: none; color: var(--notice-ink); }
+@media (prefers-reduced-motion: reduce) { .town-new-post-label > span { animation: none; background: none; color: var(--notice-ink); } }

@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from 'rea
 import type { ElementType } from 'react';
 import type { SceneAnchor, TownPost } from './TownScene';
 import TownLoading from './TownLoading';
+import { useNewPostIds } from './useNewPostIds';
 import type { TownSceneProps } from '../scene/brick-town/types';
 import { friendLinks, siteConfig } from '../config/site';
 import type { TownLayout } from '../data/town-layout';
@@ -165,6 +166,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     .slice(0, 6)
     .map((result) => result.post), [query, sortedPosts]);
   const selectedPost = selectedPostId ? postMap.get(selectedPostId) : undefined;
+  const newPostIds = useNewPostIds(posts, surface === 'article' && !explorePanel ? selectedPost?.id : undefined);
   const hoveredPost = hoveredPostId ? postMap.get(hoveredPostId) : undefined;
   const touchPost = touchPostId ? postMap.get(touchPostId) : undefined;
   const sidebarModal = isMobile && mobileSidebarOpen;
@@ -510,7 +512,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
         {surface !== 'town' && (explorePanel || surface === 'archive') && <ArchiveHeading panel={explorePanel} postCount={posts.length} />}
         <div className="main-scroll" ref={mainSurfaceRef}>
         {surface === 'town' && <section className="town-home">
-          <TownStage posts={posts} layout={layout} season={season} activePostId={selectedPostId} hoveredPostId={touchPostId ?? hoveredPostId} query={query} category={highlightCategory} tag={highlightTag} categoryPreview={Boolean(previewCategory)} tagPreview={Boolean(previewTag)} colorMode={colorMode} reducedMotion={reducedMotion} onHoverPost={onHoverPost} onResolvePostAnchor={onResolvePostAnchor} onSelectPost={selectScenePost} hoveredPost={hoveredPost} hoverAnchor={hoverAnchor} touchPost={touchPost} onCloseTouchPreview={() => setTouchPostId(undefined)} />
+          <TownStage posts={posts} layout={layout} newPostIds={newPostIds} season={season} activePostId={selectedPostId} hoveredPostId={touchPostId ?? hoveredPostId} query={query} category={highlightCategory} tag={highlightTag} categoryPreview={Boolean(previewCategory)} tagPreview={Boolean(previewTag)} colorMode={colorMode} reducedMotion={reducedMotion} onHoverPost={onHoverPost} onResolvePostAnchor={onResolvePostAnchor} onSelectPost={selectScenePost} hoveredPost={hoveredPost} hoverAnchor={hoverAnchor} touchPost={touchPost} onCloseTouchPreview={() => setTouchPostId(undefined)} />
           <p className="mobile-town-hint">点击建筑预览，再次点击或选择「阅读文章」打开；横向拖动地图，纵向滑动页面。</p>
           <div className="town-caption"><span><i className="caption-dot" /> {siteConfig.title} · {SEASON_PROFILES[season].label}季小镇</span><span>文章建筑 / {layout.plots.length} buildings / {posts.length} article floors</span><span className="caption-spacer" /><button onClick={() => { setSidebarPanel('profile'); navigate('archive'); }}>打开完整档案 {icon('arrow')}</button></div>
           <RecentPosts posts={filteredPosts.slice(0, 5)} hasFilter={Boolean(query || activeCategory || activeTag)} onOpen={openArticle} onClear={clearFilters} sectionRef={recentRef} />
