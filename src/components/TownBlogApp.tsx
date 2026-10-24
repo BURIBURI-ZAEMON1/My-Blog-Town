@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ElementType } from 'react';
 import type { SceneAnchor, TownPost } from './TownScene';
 import TownLoading from './TownLoading';
@@ -574,16 +574,22 @@ function ArticleView({ post, layout, related, scrollRoot, onBack, onOpen }: { po
   const headingKey = headings.map((heading) => heading.id).join('|');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [activeHeadingId, setActiveHeadingId] = useState<string | undefined>(headings[0]?.id);
+  const [readingProgress, setReadingProgress] = useState(0);
   useEffect(() => {
     setCollapsed({});
     setActiveHeadingId(headings[0]?.id);
+    setReadingProgress(0);
   }, [post.id]);
   useEffect(() => {
     const root = scrollRoot.current;
-    if (!root || !headings.length) return;
+    if (!root) return;
     let frame: number | undefined;
-    const updateActiveHeading = () => {
+    const updateReadingState = () => {
       frame = undefined;
+      const maxScroll = Math.max(0, root.scrollHeight - root.clientHeight);
+      const progress = maxScroll === 0 ? 0 : Math.min(1, Math.max(0, root.scrollTop / maxScroll));
+      setReadingProgress(Math.round(progress * 100));
+      if (!headings.length) return;
       const rootTop = root.getBoundingClientRect().top;
       const readingLine = rootTop + 118;
       let next = headings[0]?.id;
@@ -596,9 +602,9 @@ function ArticleView({ post, layout, related, scrollRoot, onBack, onOpen }: { po
       setActiveHeadingId((current) => current === next ? current : next);
     };
     const requestUpdate = () => {
-      if (frame === undefined) frame = window.requestAnimationFrame(updateActiveHeading);
+      if (frame === undefined) frame = window.requestAnimationFrame(updateReadingState);
     };
-    updateActiveHeading();
+    updateReadingState();
     root.addEventListener('scroll', requestUpdate, { passive: true });
     window.addEventListener('resize', requestUpdate);
     return () => {
@@ -629,12 +635,44 @@ function ArticleView({ post, layout, related, scrollRoot, onBack, onOpen }: { po
     const headingTags: Record<number, ElementType> = { 1: 'h2', 2: 'h3', 3: 'h4', 4: 'h5', 5: 'h6', 6: 'h6' };
     const Heading = section.heading ? headingTags[Math.min(section.heading.level, 6)] : undefined;
     return <section className={`article-section ${ancestorHidden ? 'is-hidden' : ''}`} key={section.heading?.id ?? `preamble-${index}`}>{section.heading && Heading && <div className={`article-heading-row level-${section.heading.level}`}><Heading id={section.heading.id}>{section.heading.text}</Heading><button className="heading-toggle" aria-label={ownCollapsed ? `展开 ${section.heading.text}` : `收起 ${section.heading.text}`} aria-expanded={!ownCollapsed} onClick={() => setCollapsed((state) => ({ ...state, [section.heading!.id]: !state[section.heading!.id] }))} /></div>}{!ancestorHidden && !ownCollapsed && section.html && <div className="article-section-content" dangerouslySetInnerHTML={{ __html: section.html }} />}</section>;
-  })}</div><div className="article-footer"><span>townId · {post.id}</span><span>／</span><span>{siteConfig.shortTitle} · map 01</span></div></article><aside className="article-aside"><span className="aside-eyebrow">ON THE MAP</span><MiniTownMap post={post} layout={layout} />{headings.length > 0 && <ArticleContents headings={headings} activeHeadingId={activeHeadingId} />}{related.length > 0 && <div className="related-posts"><span>继续阅读</span>{related.map((item) => <button key={item.id} onClick={() => onOpen(item.id)}><small>{item.category}</small><strong>{item.title}</strong></button>)}</div>}</aside></div></section>;
+  })}</div><div className="article-footer"><span>townId · {post.id}</span><span>／</span><span>{siteConfig.shortTitle} · map 01</span></div>{related.length > 0 && <div className="related-posts"><span>继续阅读</span>{related.map((item) => <button key={item.id} onClick={() => onOpen(item.id)}><small>{item.category}</small><strong>{item.title}</strong></button>)}</div>}</article><aside className="article-aside"><span className="aside-eyebrow">ON THE MAP</span><MiniTownMap post={post} layout={layout} />{headings.length > 0 && <ArticleContents headings={headings} activeHeadingId={activeHeadingId} readingProgress={readingProgress} />}</aside></div></section>;
 }
 
-function ArticleContents({ headings, activeHeadingId }: { headings: ArticleHeading[]; activeHeadingId?: string }) {
+type ArticleContentsProps = { headings: ArticleHeading[]; activeHeadingId?: string; readingProgress: number };
+
+function ArticleContents({ headings, activeHeadingId, readingProgress }: ArticleContentsProps) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const markerRef = useRef<HTMLSpanElement>(null);
+  const buttonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const activeIndex = Math.max(0, headings.findIndex((heading) => heading.id === activeHeadingId));
   const jumpTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  return <nav className="article-contents" aria-label="文章目录"> <span>文章目录</span>{headings.map((heading) => <button key={heading.id} aria-current={heading.id === activeHeadingId ? 'location' : undefined} className={`toc-level-${heading.level} ${heading.id === activeHeadingId ? 'is-active' : ''}`} onClick={() => jumpTo(heading.id)}>{heading.text}</button>)}</nav>;
+
+  useLayoutEffect(() => {
+    const button = activeHeadingId ? buttonRefs.current.get(activeHeadingId) : undefined;
+    const marker = markerRef.current;
+    if (button && marker) marker.style.transform = `translateY(${button.offsetTop + button.offsetHeight / 2}px)`;
+  }, [activeHeadingId, headings]);
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const button = activeHeadingId ? buttonRefs.current.get(activeHeadingId) : undefined;
+    if (!viewport || !button) return;
+    const target = button.offsetTop - viewport.clientHeight / 2 + button.offsetHeight / 2;
+    viewport.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+  }, [activeHeadingId]);
+
+  return <div className="article-contents-block">
+    <div className="article-contents-shell">
+      <div className="article-contents-header"><span>文章目录</span><span>{String(activeIndex + 1).padStart(2, '0')} / {String(headings.length).padStart(2, '0')}</span></div>
+      <nav ref={viewportRef} className="article-contents-viewport" aria-label="文章目录">
+        <div className="article-contents-list"><span ref={markerRef} className="toc-active-marker" aria-hidden="true" />{headings.map((heading) => <button ref={(element) => { if (element) buttonRefs.current.set(heading.id, element); else buttonRefs.current.delete(heading.id); }} key={heading.id} aria-current={heading.id === activeHeadingId ? 'location' : undefined} className={`toc-level-${heading.level} ${heading.id === activeHeadingId ? 'is-active' : ''}`} onClick={() => jumpTo(heading.id)}><span className="toc-node" aria-hidden="true" /><span className="toc-label">{heading.text}</span></button>)}</div>
+      </nav>
+    </div>
+    <div className="reading-progress" aria-label={`阅读进度 ${readingProgress}%`}>
+      <svg viewBox="0 0 48 48" aria-hidden="true"><circle className="reading-progress-track" cx="24" cy="24" r="19" /><circle className="reading-progress-value" cx="24" cy="24" r="19" pathLength="100" style={{ strokeDashoffset: 100 - readingProgress }} /></svg>
+      <span><strong>{readingProgress}</strong><small>%</small></span>
+      <em>阅读进度</em>
+    </div>
+  </div>;
 }
 
 function SeriesDirectory({ posts, selectedPostId, onOpenArticle }: { posts: TownPost[]; selectedPostId?: string; onOpenArticle: (id: string) => void }) { return <div className="series-directory"><span className="series-directory-label">当前系列 · {posts[0]?.series}</span>{posts.map((post, index) => <button key={post.id} className={post.id === selectedPostId ? 'is-current' : ''} onClick={() => onOpenArticle(post.id)}><b>{index + 1}:</b><span>{post.title}</span></button>)}</div>; }
