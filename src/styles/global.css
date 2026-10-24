@@ -1447,3 +1447,121 @@ body { font-family: var(--sans); }
   .article-contents-block { margin-top: 20px; }
   .related-posts { margin-top: 55px; }
 }
+
+/* The map is an orientation cue, so it stays compact and legible beside the
+   reading rail instead of competing with the article. */
+.article-location {
+  margin: 14px 0 0;
+  padding: 0;
+  overflow: visible;
+}
+.article-location-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 9px;
+  color: #94a3b8;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: .05em;
+}
+.article-location-header span:first-child {
+  color: #64748b;
+  font-family: var(--expressive);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.article-location-map {
+  position: relative;
+  aspect-ratio: 1.65 / 1;
+  overflow: hidden;
+  padding: 7px;
+  border: 1px solid #e4ebf1;
+  border-radius: 15px;
+  background: #f8fafc;
+  box-shadow: 0 9px 20px rgba(37, 71, 104, .06), inset 0 1px rgba(255, 255, 255, .9);
+}
+.article-location-map::after {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border: 1px solid rgba(255, 255, 255, .5);
+  border-radius: 10px;
+  pointer-events: none;
+}
+.pixel-town-map { position: relative; z-index: 0; border-radius: 10px; }
+.mini-map-ground { fill: #dfead8; }
+.mini-map-water { stroke: #55aeba; opacity: .88; }
+.mini-map-road { stroke: #d6a878; opacity: .74; }
+.mini-map-center-ring, .mini-map-center-connector { stroke: #c99561; opacity: .8; }
+.mini-map-building { fill: #88a58e; stroke: #5f7e6d; stroke-width: .8; opacity: .8; }
+.mini-map-building.is-selected { fill: #f2b84b; stroke: #a66c16; stroke-width: 1.35; opacity: 1; }
+.mini-map-marker-halo {
+  fill: none;
+  stroke: #3b82f6;
+  stroke-width: 1;
+  opacity: .38;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: mini-map-marker-halo 2.2s ease-out infinite;
+}
+.mini-map-marker { fill: #2563eb; stroke: #fff; stroke-width: .8; }
+@keyframes mini-map-marker-halo {
+  0% { transform: scale(.6); opacity: .52; }
+  70%, 100% { transform: scale(1.8); opacity: 0; }
+}
+.article-location-caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 10px;
+}
+.article-location-pin {
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, .11);
+}
+.article-location-caption > span:last-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.article-location-caption small {
+  color: #94a3b8;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: .03em;
+}
+.article-location-caption strong {
+  overflow: hidden;
+  color: #334155;
+  font-family: var(--reading);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mode-night .article-location-header span:first-child,
+.mode-night .article-location-caption strong { color: #f8fafc; }
+.mode-night .article-location-map { border-color: #20344f; background: #111c2f; box-shadow: 0 9px 20px rgba(0, 0, 0, .18), inset 0 1px rgba(255, 255, 255, .04); }
+.mode-night .article-location-map::after { border-color: rgba(147, 197, 253, .13); }
+.mode-night .mini-map-ground { fill: #223d3b; }
+.mode-night .mini-map-water { stroke: #63c3c9; }
+.mode-night .mini-map-road { stroke: #c79a6c; }
+.mode-night .mini-map-center-ring, .mode-night .mini-map-center-connector { stroke: #b8895d; }
+.mode-night .mini-map-building { fill: #416a5d; stroke: #24463f; }
+.mode-night .mini-map-building.is-selected { fill: #e1b54b; stroke: #ffe7a3; }
+.mode-night .mini-map-marker { fill: #60a5fa; stroke: #111c2f; }
+.mode-night .mini-map-marker-halo { stroke: #60a5fa; }
+.mode-night .article-location-pin { background: #60a5fa; box-shadow: 0 0 0 3px rgba(96, 165, 250, .16); }
+@media (prefers-reduced-motion: reduce) { .mini-map-marker-halo { animation: none; opacity: .28; } }
+
+/* Keep the title rail quiet; focus is expressed by the active node and the
+   shared keyboard ring rather than a box around every row. */
+.article-contents button { border: 0 !important; outline: 0; background: transparent !important; }
+.article-contents button:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+.article-contents button::after { display: none; }

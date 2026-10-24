@@ -778,15 +778,19 @@ function MiniTownMap({ post, layout }: { post: TownPost; layout: TownLayout }) {
   const path = (points: { x: number; z: number }[]) => points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.z}`).join(' ');
   const polygonFor = (building: typeof map.buildings[number]) => building.points?.map((point) => `${point.x},${point.z}`).join(' ') ?? '';
   return <div className="article-location" aria-label={`文章建筑在小镇中的位置：${post.title}`}>
-    <svg className="pixel-town-map" viewBox={`${map.bounds.minX} ${map.bounds.minZ} ${map.bounds.maxX - map.bounds.minX} ${map.bounds.maxZ - map.bounds.minZ}`} shapeRendering="crispEdges" role="img" aria-hidden="true">
-      <rect className="mini-map-ground" x={map.bounds.minX} y={map.bounds.minZ} width={map.bounds.maxX - map.bounds.minX} height={map.bounds.maxZ - map.bounds.minZ} />
-      <path className="mini-map-water" d={path(map.river.points)} style={{ strokeWidth: map.river.width }} />
-      {map.roads.map((road, index) => <path className="mini-map-road" d={path(road.points)} style={{ strokeWidth: road.width }} key={`road-${index}`} />)}
-      <path className="mini-map-road mini-map-center-ring" d={path(map.centerRing.points)} style={{ strokeWidth: map.centerRing.width }} />
-      {map.centerConnectors.map((connector, index) => <path className="mini-map-road mini-map-center-connector" d={path(connector.points)} style={{ strokeWidth: connector.width }} key={`connector-${index}`} />)}
-      {map.buildings.map((building) => <polygon className={`mini-map-building ${building === map.selected ? 'is-selected' : ''}`} key={building.id} points={polygonFor(building)} />)}
-      {map.selected && <circle className="mini-map-marker" cx={map.selected.x} cy={map.selected.z} r="1.8" />}
-    </svg>
+    <div className="article-location-header"><span>ARTICLE LOCATION</span><span>{post.series ? `FLOOR ${String((post.seriesIndex ?? 0) + 1).padStart(2, '0')}` : 'PLOT 01'}</span></div>
+    <div className="article-location-map">
+      <svg className="pixel-town-map" viewBox={`${map.bounds.minX} ${map.bounds.minZ} ${map.bounds.maxX - map.bounds.minX} ${map.bounds.maxZ - map.bounds.minZ}`} preserveAspectRatio="xMidYMid slice" shapeRendering="crispEdges" role="img" aria-hidden="true">
+        <rect className="mini-map-ground" x={map.bounds.minX} y={map.bounds.minZ} width={map.bounds.maxX - map.bounds.minX} height={map.bounds.maxZ - map.bounds.minZ} />
+        <path className="mini-map-water" d={path(map.river.points)} style={{ strokeWidth: map.river.width }} />
+        {map.roads.map((road, index) => <path className="mini-map-road" d={path(road.points)} style={{ strokeWidth: road.width }} key={`road-${index}`} />)}
+        <path className="mini-map-road mini-map-center-ring" d={path(map.centerRing.points)} style={{ strokeWidth: map.centerRing.width }} />
+        {map.centerConnectors.map((connector, index) => <path className="mini-map-road mini-map-center-connector" d={path(connector.points)} style={{ strokeWidth: connector.width }} key={`connector-${index}`} />)}
+        {map.buildings.map((building) => <polygon className={`mini-map-building ${building === map.selected ? 'is-selected' : ''}`} key={building.id} points={polygonFor(building)} />)}
+        {map.selected && <><circle className="mini-map-marker-halo" cx={map.selected.x} cy={map.selected.z} r="4.3" /><circle className="mini-map-marker" cx={map.selected.x} cy={map.selected.z} r="1.8" /></>}
+      </svg>
+    </div>
+    <div className="article-location-caption"><span className="article-location-pin" aria-hidden="true" /><span><small>文章建筑</small><strong>{post.title}</strong></span></div>
   </div>;
 }
 
