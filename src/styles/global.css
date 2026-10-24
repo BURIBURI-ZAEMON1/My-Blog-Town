@@ -1847,3 +1847,19 @@ body { font-family: var(--sans); }
   .reading-progress > .reading-progress-directory-icon .icon { width: 15px; height: 15px; }
   .mode-night .reading-progress > .reading-progress-directory-icon { color: #93c5fd; }
 }
+
+@media (max-width: 720px) {
+  .reading-progress > svg {
+    position: absolute;
+    inset: 0;
+    width: 52px;
+    height: 52px;
+    grid-row: auto;
+    transform: rotate(-90deg);
+  }
+  .reading-progress > .reading-progress-directory-icon {
+    inset: 0;
+    align-items: center;
+    justify-items: center;
+  }
+}

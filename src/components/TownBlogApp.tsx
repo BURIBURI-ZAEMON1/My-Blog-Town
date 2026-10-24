@@ -83,6 +83,7 @@ const icon = (name: string) => {
     back: 'M19 12H6M11 6l-6 6 6 6',
     close: 'M6 6l12 12M18 6 6 18',
     menu: 'M4 7h16M4 12h16M4 17h16',
+    toc: 'M5 6.5h.01M5 12h.01M5 17.5h.01M10 6.5h10M10 12h10M10 17.5h10',
     external: 'M14 5h5v5M19 5l-8 8M17 13v5H5V6h5',
     chevron: 'm9 6 6 6-6 6',
   };
@@ -692,7 +693,7 @@ function ArticleContents({ headings, activeHeadingId, readingProgress }: Article
     </div>
     <button type="button" className="reading-progress" aria-label={`${mobileOpen ? '关闭' : '打开'}文章目录，阅读进度 ${readingProgress}%`} aria-expanded={mobileOpen} aria-controls={contentsId} onClick={toggleMobileContents}>
       <svg viewBox="0 0 48 48" aria-hidden="true"><circle className="reading-progress-track" cx="24" cy="24" r="19" /><circle className="reading-progress-value" cx="24" cy="24" r="19" pathLength="100" style={{ strokeDashoffset: 100 - readingProgress }} /></svg>
-      <span className="reading-progress-directory-icon" aria-hidden="true">{icon('menu')}</span>
+      <span className="reading-progress-directory-icon" aria-hidden="true">{icon('toc')}</span>
       <span><strong>{readingProgress}</strong><small>%</small></span>
       <em>阅读进度</em>
     </button>
