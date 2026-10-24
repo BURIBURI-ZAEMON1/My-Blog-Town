@@ -1,11 +1,13 @@
 ---
-townId: "post-hugo-blog-guide"
-title: "Hello, Blog！用 Hugo 快速搭建你的博客"
-description: "记录使用 Hugo、Blowfish、GitHub 与 Vercel 搭建个人博客的完整过程。"
-date: "2025-10-19T13:59:13+08:00"
-category: "工具捣鼓"
-tags: ["入门", "博客"]
-series: "Hello, Blog!"
+townId: post-hugo-blog-guide
+title: Hello, Blog！用 Hugo 快速搭建你的博客
+description: 记录使用 Hugo、Blowfish、GitHub 与 Vercel 搭建个人博客的完整过程。
+date: 2025-10-19T13:59:13+08:00
+category: 工具捣鼓
+tags:
+  - 博客
+  - 入门教程
+series: Hello, Blog!
 seriesIndex: 0
 draft: false
 ---

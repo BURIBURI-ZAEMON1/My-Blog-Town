@@ -1,14 +1,16 @@
 ---
-townId: "post-obsidian-sync"
-title: "免费实现全设备同步 Obsidian 数据"
-description: "借助 Git、GitHub 与移动端工具，搭建一套免费、可控的 Obsidian 多设备同步方案。"
-date: "2026-05-16T13:59:13+08:00"
-category: "工具捣鼓"
-tags: ["Obsidian", "GitHub"]
-series: "Obsidian"
+townId: post-obsidian-sync
+title: 免费实现全设备同步 Obsidian 数据
+description: 借助 Git、GitHub 与移动端工具，搭建一套免费、可控的 Obsidian 多设备同步方案。
+date: 2026-05-16T13:59:13+08:00
+category: 工具捣鼓
+tags:
+  - Obsidian
+  - GitHub
+series: Obsidian
 seriesIndex: 1
-cover: "/assets/posts/obsidian-sync/cover.png"
-coverAlt: "免费实现全设备同步 Obsidian 数据"
+cover: /assets/posts/obsidian-sync/cover.png
+coverAlt: 免费实现全设备同步 Obsidian 数据
 draft: false
 ---
 

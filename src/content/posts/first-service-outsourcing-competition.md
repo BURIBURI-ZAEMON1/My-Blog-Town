@@ -1,12 +1,15 @@
 ---
-townId: "post-first-service-outsourcing-competition"
-title: "记第一次服外：心得与教训"
-description: "复盘第一次参加服务外包创新创业大赛的赛制判断、团队组织、项目推进与协作教训。"
-date: "2026-07-04T13:59:13+08:00"
-category: "经历分享"
-tags: ["服外", "团队合作", "项目经历"]
-cover: "/assets/posts/first-service-outsourcing-competition/cover.png"
-coverAlt: "记第一次服外：心得与教训"
+townId: post-first-service-outsourcing-competition
+title: 记第一次服外：心得与教训
+description: 复盘第一次参加服务外包创新创业大赛的赛制判断、团队组织、项目推进与协作教训。
+date: 2026-07-04T13:59:13+08:00
+category: 经历分享
+tags:
+  - 服外
+  - 团队合作
+  - 比赛经历
+cover: /assets/posts/first-service-outsourcing-competition/cover.png
+coverAlt: 记第一次服外：心得与教训
 draft: false
 ---
 

@@ -1,14 +1,16 @@
 ---
-townId: "post-obsidian-ai-agent-guide"
-title: "极速上手 Obsidian，配置 AI Agent 搭建笔记流"
-description: "从基础安装、插件配置到 AI Agent 工作流，完整介绍一套可快速上手的 Obsidian 笔记方案。"
-date: "2026-05-13T13:59:13+08:00"
-category: "工具捣鼓"
-tags: ["Obsidian", "入门", "Agent", "笔记", "skill"]
-series: "Obsidian"
+townId: post-obsidian-ai-agent-guide
+title: 极速上手 Obsidian，配置 AI Agent 搭建笔记流
+description: 从基础安装、插件配置到 AI Agent 工作流，完整介绍一套可快速上手的 Obsidian 笔记方案。
+date: 2026-05-13T13:59:13+08:00
+category: 工具捣鼓
+tags:
+  - Obsidian
+  - 入门教程
+series: Obsidian
 seriesIndex: 0
-cover: "/assets/posts/obsidian-ai-agent-guide/cover.png"
-coverAlt: "极速上手 Obsidian，配置 AI Agent 搭建笔记流"
+cover: /assets/posts/obsidian-ai-agent-guide/cover.png
+coverAlt: 极速上手 Obsidian，配置 AI Agent 搭建笔记流
 draft: false
 ---
 
@@ -96,8 +98,8 @@ npm install -g @google/gemini-cli
 | mermaid-visualizer      | 将文本逻辑转化为专业的 Mermaid 架构图或流程图,并内置了针对 Obsidian 渲染引擎的语法纠错机制.                                                                                       | 同上                                                                                                                                                                                                                        |                                                                   |
 | excalidraw-diagram      | 将文本逻辑转化为手绘风格的 Excalidraw 图表.(同时推荐在 Obsidian 的社区插件市场中安装Excalidraw 插件,可以自己手绘图表,还有大量素材库可用)                                                        | 同上                                                                                                                                                                                                                        |                                                                   |
 | tutor-skills            | 两个 skill (tutor-setup 和 tutor) ,构成了一个“输入-内化-检测”的完整闭环:将文档或代码库一键转化为结构化的 Obsidian 知识库,之后通过无提示的交互式测验不断暴露出你的知识盲区并记录学习轨迹.                            | 在你的 Obsidian仓库文件夹中打开终端,输入:`npx skills add RoundTable02/tutor-skills`,记得其中两个 skill 都要勾选,其余与第一项 skill 一致                                                                                                                    |                                                                   |
-| study-direction-init    | 只在 `Study/`目录下工作.让 AI 能自己识别方向路径进行初始化,惰性创建或补全首页链,利于搭建合理清晰地关系图谱.并尽可能合理地为方向绑定轻型笔记模板(便于其他会话复用,遵守轻规则).                                              | 由于目前未完全优化好,所以未在 github 上公开,附件暂缺（旧博客中未找到对应文件）,下载并解压后复制到你Obsidian 仓库下的 `.agents/skills`和其他你所需要的 agents 的 skills 目录下                                                                                  | 这是我自己写的还在试验阶段的 skill.可能还有需要优化的地方,但几乎不存在使用风险.希望你们能安装它并可与我反馈需要优化的点. |
-| study-note-refiner      | 只在 `Study/`目录下工作.让 AI 支持按用户指定标题范围,处理当前这次速记,将速记补充并整理成根据关系相互链接的原子笔记,并主动维护相关的笔记与链接,让用户能更快上手 Obsidian 特有的笔记实现模式.                                   | [点击下载附件 ](/assets/posts/obsidian-ai-agent-guide/file/study-note-refiner.zip),同上                                                                                                                                                                                 | 同上.这两个 skill 间有联动逻辑,最好都安装.                                        |
+| study-direction-init    | 只在 `Study/`目录下工作.让 AI 能自己识别方向路径进行初始化,惰性创建或补全首页链,利于搭建合理清晰地关系图谱.并尽可能合理地为方向绑定轻型笔记模板(便于其他会话复用,遵守轻规则).                                              | 由于目前未完全优化好,所以未在 github 上公开,附件暂缺（旧博客中未找到对应文件）,下载并解压后复制到你Obsidian 仓库下的 `.agents/skills`和其他你所需要的 agents 的 skills 目录下                                                                                                         | 这是我自己写的还在试验阶段的 skill.可能还有需要优化的地方,但几乎不存在使用风险.希望你们能安装它并可与我反馈需要优化的点. |
+| study-note-refiner      | 只在 `Study/`目录下工作.让 AI 支持按用户指定标题范围,处理当前这次速记,将速记补充并整理成根据关系相互链接的原子笔记,并主动维护相关的笔记与链接,让用户能更快上手 Obsidian 特有的笔记实现模式.                                   | [点击下载附件 ](/assets/posts/obsidian-ai-agent-guide/file/study-note-refiner.zip),同上                                                                                                                                           | 同上.这两个 skill 间有联动逻辑,最好都安装.                                        |
 
 再补充解释一下为什么我写的两个 skill 只在 `/Study`目录下工作:这两个 skill 专注于优化各类学习笔记的搭建(各类课程内容或技术学习),但未针对于wiki知识库搭建优化(这也是 Obsidian 的一个核心优势,以后可能会再单独分享).且因为还在试验阶段,所以为了严格控制作用范围就限制在 `/Study`目录下工作,只要想使用这两个 skill 只需要建一个名为Study的目录并将文件夹或笔记放入此目录下就可以.
 
