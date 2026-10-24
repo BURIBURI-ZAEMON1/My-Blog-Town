@@ -15,21 +15,22 @@ export function createPostNoticeProjector(scene: Scene, camera: Camera, houses: 
     points.set(id, new Vector3(house.plot.x, y, house.plot.z));
   });
   const lastTransform = Matrix.Zero();
-  let lastIds: readonly string[] | undefined, lastWidth = -1, lastHeight = -1;
+  let lastIds: readonly string[] | undefined, lastGuideId: string | undefined, lastWidth = -1, lastHeight = -1;
   return {
     /** Call after scene.render(), when Babylon has updated the camera transform. */
-    project(ids: readonly string[] = NO_IDS, width: number, height: number): PostNoticeFrame | undefined {
+    project(ids: readonly string[] = NO_IDS, guidePostId: string | undefined, width: number, height: number): PostNoticeFrame | undefined {
       const transform = scene.getTransformMatrix();
-      if (ids === lastIds && width === lastWidth && height === lastHeight && (!ids.length || transform.equals(lastTransform))) return;
-      lastIds = ids; lastWidth = width; lastHeight = height; lastTransform.copyFrom(transform);
+      if (ids === lastIds && guidePostId === lastGuideId && width === lastWidth && height === lastHeight && ((!ids.length && !guidePostId) || transform.equals(lastTransform))) return;
+      lastIds = ids; lastGuideId = guidePostId; lastWidth = width; lastHeight = height; lastTransform.copyFrom(transform);
       const viewport = camera.viewport.toGlobal(width, height);
       const anchors: PostNoticeFrame['anchors'] = [];
-      for (const postId of ids) {
+      const noticeIds = guidePostId ? [guidePostId, ...ids.filter((id) => id !== guidePostId)] : ids;
+      for (const postId of noticeIds) {
         const point = points.get(postId);
         if (!point) continue;
         const p = Vector3.Project(point, Matrix.IdentityReadOnly, transform, viewport);
         if (p.z >= 0 && p.z <= 1 && p.x >= 0 && p.x <= width && p.y >= 0 && p.y <= height) {
-          anchors.push({ postId, x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 });
+          anchors.push({ postId, kind: postId === guidePostId ? 'guide' : 'new', x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 });
         }
       }
       return { width, height, anchors };
