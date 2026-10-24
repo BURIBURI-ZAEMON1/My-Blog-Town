@@ -179,6 +179,14 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
   const currentSeriesPosts = useMemo(() => selectedPost?.series ? sortedPosts.filter((post) => post.series === selectedPost.series).sort((a, b) => (a.seriesIndex ?? 0) - (b.seriesIndex ?? 0)) : [], [selectedPost, sortedPosts]);
 
   useEffect(() => {
+    if (surface !== 'article' || !selectedPostId) return;
+    const frame = window.requestAnimationFrame(() => {
+      mainSurfaceRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedPostId, surface]);
+
+  useEffect(() => {
     const media = window.matchMedia('(max-width: 720px)');
     const update = () => {
       setIsMobile(media.matches);
@@ -336,7 +344,6 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     setPreviewTag(undefined);
     setHoveredPostId(undefined);
     setHoverAnchor(undefined);
-    mainSurfaceRef.current?.scrollTo({ top: 0, behavior: reducedMotion ? 'auto' : 'smooth' });
   };
 
   const returnFromArticle = () => {
@@ -644,8 +651,19 @@ function ArticleContents({ headings, activeHeadingId, readingProgress }: Article
   const viewportRef = useRef<HTMLDivElement>(null);
   const markerRef = useRef<HTMLSpanElement>(null);
   const buttonRefs = useRef(new Map<string, HTMLButtonElement>());
-  const activeIndex = Math.max(0, headings.findIndex((heading) => heading.id === activeHeadingId));
-  const jumpTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const contentsId = useId();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const jumpTo = (id: string) => {
+    const element = document.getElementById(id);
+    const root = document.querySelector<HTMLElement>('.main-scroll');
+    if (element && root) {
+      const rootTop = root.getBoundingClientRect().top;
+      const target = root.scrollTop + element.getBoundingClientRect().top - rootTop - 104;
+      const maxScroll = Math.max(0, root.scrollHeight - root.clientHeight);
+      root.scrollTo({ top: Math.min(maxScroll, Math.max(0, target)), behavior: 'smooth' });
+    }
+    setMobileOpen(false);
+  };
 
   useLayoutEffect(() => {
     const button = activeHeadingId ? buttonRefs.current.get(activeHeadingId) : undefined;
@@ -659,19 +677,30 @@ function ArticleContents({ headings, activeHeadingId, readingProgress }: Article
     const target = button.offsetTop - viewport.clientHeight / 2 + button.offsetHeight / 2;
     viewport.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
   }, [activeHeadingId]);
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [mobileOpen]);
 
-  return <div className="article-contents-block">
-    <div className="article-contents-shell">
-      <div className="article-contents-header"><span>文章目录</span><span>{String(activeIndex + 1).padStart(2, '0')} / {String(headings.length).padStart(2, '0')}</span></div>
+  const toggleMobileContents = () => {
+    if (window.matchMedia('(max-width: 720px)').matches) setMobileOpen((open) => !open);
+  };
+
+  return <div className={`article-contents-block ${mobileOpen ? 'is-mobile-open' : ''}`}>
+    <div id={contentsId} className="article-contents-shell">
       <nav ref={viewportRef} className="article-contents-viewport" aria-label="文章目录">
         <div className="article-contents-list"><span ref={markerRef} className="toc-active-marker" aria-hidden="true" />{headings.map((heading) => <button ref={(element) => { if (element) buttonRefs.current.set(heading.id, element); else buttonRefs.current.delete(heading.id); }} key={heading.id} aria-current={heading.id === activeHeadingId ? 'location' : undefined} className={`toc-level-${heading.level} ${heading.id === activeHeadingId ? 'is-active' : ''}`} onClick={() => jumpTo(heading.id)}><span className="toc-node" aria-hidden="true" /><span className="toc-label">{heading.text}</span></button>)}</div>
       </nav>
     </div>
-    <div className="reading-progress" aria-label={`阅读进度 ${readingProgress}%`}>
+    <button type="button" className="reading-progress" aria-label={`${mobileOpen ? '关闭' : '打开'}文章目录，阅读进度 ${readingProgress}%`} aria-expanded={mobileOpen} aria-controls={contentsId} onClick={toggleMobileContents}>
       <svg viewBox="0 0 48 48" aria-hidden="true"><circle className="reading-progress-track" cx="24" cy="24" r="19" /><circle className="reading-progress-value" cx="24" cy="24" r="19" pathLength="100" style={{ strokeDashoffset: 100 - readingProgress }} /></svg>
       <span><strong>{readingProgress}</strong><small>%</small></span>
       <em>阅读进度</em>
-    </div>
+    </button>
   </div>;
 }
 
@@ -780,7 +809,7 @@ function MiniTownMap({ post, layout }: { post: TownPost; layout: TownLayout }) {
   return <div className="article-location" aria-label={`文章建筑在小镇中的位置：${post.title}`}>
     <div className="article-location-header"><span>ARTICLE LOCATION</span><span>{post.series ? `FLOOR ${String((post.seriesIndex ?? 0) + 1).padStart(2, '0')}` : 'PLOT 01'}</span></div>
     <div className="article-location-map">
-      <svg className="pixel-town-map" viewBox={`${map.bounds.minX} ${map.bounds.minZ} ${map.bounds.maxX - map.bounds.minX} ${map.bounds.maxZ - map.bounds.minZ}`} preserveAspectRatio="xMidYMid slice" shapeRendering="crispEdges" role="img" aria-hidden="true">
+      <svg className="pixel-town-map" viewBox={`${map.bounds.minX} ${map.bounds.minZ} ${map.bounds.maxX - map.bounds.minX} ${map.bounds.maxZ - map.bounds.minZ}`} preserveAspectRatio="none" shapeRendering="crispEdges" role="img" aria-hidden="true">
         <rect className="mini-map-ground" x={map.bounds.minX} y={map.bounds.minZ} width={map.bounds.maxX - map.bounds.minX} height={map.bounds.maxZ - map.bounds.minZ} />
         <path className="mini-map-water" d={path(map.river.points)} style={{ strokeWidth: map.river.width }} />
         {map.roads.map((road, index) => <path className="mini-map-road" d={path(road.points)} style={{ strokeWidth: road.width }} key={`road-${index}`} />)}
