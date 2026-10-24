@@ -3,7 +3,7 @@ townId: post-obsidian-ai-agent-guide
 title: 极速上手 Obsidian，配置 AI Agent 搭建笔记流
 description: 从基础安装、插件配置到 AI Agent 工作流，完整介绍一套可快速上手的 Obsidian 笔记方案。
 date: 2026-05-13T13:59:13+08:00
-category: 工具捣鼓
+category: 捣鼓记录
 tags:
   - Obsidian
   - 入门教程
