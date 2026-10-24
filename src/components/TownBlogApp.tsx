@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ElementType } from 'react';
 import type { SceneAnchor, TownPost } from './TownScene';
 import TownLoading from './TownLoading';
@@ -649,7 +649,6 @@ type ArticleContentsProps = { headings: ArticleHeading[]; activeHeadingId?: stri
 
 function ArticleContents({ headings, activeHeadingId, readingProgress }: ArticleContentsProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
-  const markerRef = useRef<HTMLSpanElement>(null);
   const buttonRefs = useRef(new Map<string, HTMLButtonElement>());
   const contentsId = useId();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -665,11 +664,6 @@ function ArticleContents({ headings, activeHeadingId, readingProgress }: Article
     setMobileOpen(false);
   };
 
-  useLayoutEffect(() => {
-    const button = activeHeadingId ? buttonRefs.current.get(activeHeadingId) : undefined;
-    const marker = markerRef.current;
-    if (button && marker) marker.style.transform = `translateY(${button.offsetTop + button.offsetHeight / 2}px)`;
-  }, [activeHeadingId, headings]);
   useEffect(() => {
     const viewport = viewportRef.current;
     const button = activeHeadingId ? buttonRefs.current.get(activeHeadingId) : undefined;
@@ -693,7 +687,7 @@ function ArticleContents({ headings, activeHeadingId, readingProgress }: Article
   return <div className={`article-contents-block ${mobileOpen ? 'is-mobile-open' : ''}`}>
     <div id={contentsId} className="article-contents-shell">
       <nav ref={viewportRef} className="article-contents-viewport" aria-label="文章目录">
-        <div className="article-contents-list"><span ref={markerRef} className="toc-active-marker" aria-hidden="true" />{headings.map((heading) => <button ref={(element) => { if (element) buttonRefs.current.set(heading.id, element); else buttonRefs.current.delete(heading.id); }} key={heading.id} aria-current={heading.id === activeHeadingId ? 'location' : undefined} className={`toc-level-${heading.level} ${heading.id === activeHeadingId ? 'is-active' : ''}`} onClick={() => jumpTo(heading.id)}><span className="toc-node" aria-hidden="true" /><span className="toc-label">{heading.text}</span></button>)}</div>
+        <div className="article-contents-list">{headings.map((heading) => <button ref={(element) => { if (element) buttonRefs.current.set(heading.id, element); else buttonRefs.current.delete(heading.id); }} key={heading.id} aria-current={heading.id === activeHeadingId ? 'location' : undefined} className={`toc-level-${heading.level} ${heading.id === activeHeadingId ? 'is-active' : ''}`} onClick={() => jumpTo(heading.id)}><span className="toc-node" aria-hidden="true" /><span className="toc-label">{heading.text}</span></button>)}</div>
       </nav>
     </div>
     <button type="button" className="reading-progress" aria-label={`${mobileOpen ? '关闭' : '打开'}文章目录，阅读进度 ${readingProgress}%`} aria-expanded={mobileOpen} aria-controls={contentsId} onClick={toggleMobileContents}>

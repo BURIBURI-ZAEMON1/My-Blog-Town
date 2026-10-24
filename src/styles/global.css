@@ -1743,3 +1743,77 @@ body { font-family: var(--sans); }
 /* Keep the complete town board in the same coordinate frame as the marker;
    the inset now uses the board's natural aspect rather than cropping its edges. */
 .article-location-map { aspect-ratio: 1.42 / 1; }
+
+/* Final alignment pass: one node per heading keeps the reading rail on a
+   single axis, including nested headings. */
+.article-contents-list::before { left: 19px; }
+.article-contents-viewport button .toc-node,
+.article-contents-viewport .toc-level-2 .toc-node,
+.article-contents-viewport .toc-level-3 .toc-node,
+.article-contents-viewport .toc-level-4 .toc-node,
+.article-contents-viewport .toc-level-5 .toc-node,
+.article-contents-viewport .toc-level-6 .toc-node {
+  top: 50% !important;
+  left: 2px !important;
+  width: 7px !important;
+  height: 7px !important;
+  margin: 0 !important;
+  opacity: 1;
+  transform: translateY(-50%);
+}
+.article-contents-viewport button.is-active .toc-node {
+  animation: toc-node-hop .52s cubic-bezier(.22, 1, .36, 1);
+}
+@keyframes toc-node-hop {
+  0% { transform: translateY(-50%) scale(.78); }
+  48% { transform: translateY(-50%) scale(1.28); }
+  100% { transform: translateY(-50%) scale(1); }
+}
+
+/* The mobile map is a short orientation cue before the article, rather than
+   a second hero surface. */
+@media (max-width: 720px) {
+  .article-layout,
+  .article-aside,
+  .article-location,
+  .article-location-map,
+  .article-location-caption { min-width: 0; max-width: 100%; }
+  .article-location { width: 100%; margin-top: 6px; }
+  .article-location-header { margin-bottom: 5px; font-size: 7px; }
+  .article-location-header span:first-child { font-size: 9px; }
+  .article-location-map {
+    width: 100%;
+    height: 104px;
+    aspect-ratio: auto;
+    padding: 5px;
+    border-radius: 11px;
+  }
+  .article-location-map::after { inset: 5px; border-radius: 7px; }
+  .article-location-caption { gap: 6px; margin-top: 6px; }
+  .article-location-caption strong {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    font-size: 10px;
+    line-height: 1.3;
+  }
+  .article-location-caption small { font-size: 7px; }
+  .article-location-pin { width: 6px; height: 6px; flex-basis: 6px; }
+
+  .reading-progress {
+    width: 52px;
+    height: 52px;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .reading-progress svg {
+    filter: drop-shadow(0 4px 8px rgba(20, 43, 72, .16));
+  }
+  .reading-progress > span { display: none; }
+}
+
+@media (max-width: 720px) {
+  .article-layout > article { width: 100%; min-width: 0; }
+  .article-location { aspect-ratio: auto; }
+}
