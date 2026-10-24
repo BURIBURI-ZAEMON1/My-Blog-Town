@@ -1399,7 +1399,7 @@ body { font-family: var(--sans); }
   margin-top: 16px;
   padding: 0 13px;
 }
-.reading-progress svg {
+.reading-progress > svg {
   grid-row: 1 / span 2;
   display: block;
   width: 42px;
@@ -1626,7 +1626,7 @@ body { font-family: var(--sans); }
   cursor: default;
   text-align: left;
 }
-.reading-progress svg {
+.reading-progress > svg {
   flex: 0 0 28px;
   width: 28px;
   height: 28px;
@@ -1698,7 +1698,7 @@ body { font-family: var(--sans); }
     box-shadow: 0 8px 20px rgba(20, 43, 72, .16), 0 0 0 4px rgba(59, 130, 246, .07);
     cursor: pointer;
   }
-  .reading-progress svg { width: 52px; height: 52px; }
+  .reading-progress > svg { width: 52px; height: 52px; }
   .reading-progress > span {
     position: absolute;
     display: flex;
@@ -1807,7 +1807,7 @@ body { font-family: var(--sans); }
     background: transparent;
     box-shadow: none;
   }
-  .reading-progress svg {
+  .reading-progress > svg {
     filter: drop-shadow(0 4px 8px rgba(20, 43, 72, .16));
   }
   .reading-progress > span { display: none; }
@@ -1816,4 +1816,34 @@ body { font-family: var(--sans); }
 @media (max-width: 720px) {
   .article-layout > article { width: 100%; min-width: 0; }
   .article-location { aspect-ratio: auto; }
+}
+
+@media (max-width: 720px) {
+  .article-location-map {
+    width: min(100%, 300px);
+    height: 140px;
+    margin-inline: auto;
+  }
+  .reading-progress-directory-icon {
+    position: absolute;
+    inset: 0;
+    display: grid !important;
+    place-items: center;
+    color: #2563eb;
+    pointer-events: none;
+  }
+  .reading-progress-directory-icon .icon {
+    width: 15px;
+    height: 15px;
+    stroke-width: 1.8;
+  }
+  .reading-progress > span:not(.reading-progress-directory-icon) { display: none; }
+  .mode-night .reading-progress-directory-icon { color: #93c5fd; }
+}
+.reading-progress-directory-icon { display: none; }
+
+@media (max-width: 720px) {
+  .reading-progress > .reading-progress-directory-icon { color: #2563eb; }
+  .reading-progress > .reading-progress-directory-icon .icon { width: 15px; height: 15px; }
+  .mode-night .reading-progress > .reading-progress-directory-icon { color: #93c5fd; }
 }

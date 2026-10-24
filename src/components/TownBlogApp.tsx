@@ -692,6 +692,7 @@ function ArticleContents({ headings, activeHeadingId, readingProgress }: Article
     </div>
     <button type="button" className="reading-progress" aria-label={`${mobileOpen ? '关闭' : '打开'}文章目录，阅读进度 ${readingProgress}%`} aria-expanded={mobileOpen} aria-controls={contentsId} onClick={toggleMobileContents}>
       <svg viewBox="0 0 48 48" aria-hidden="true"><circle className="reading-progress-track" cx="24" cy="24" r="19" /><circle className="reading-progress-value" cx="24" cy="24" r="19" pathLength="100" style={{ strokeDashoffset: 100 - readingProgress }} /></svg>
+      <span className="reading-progress-directory-icon" aria-hidden="true">{icon('menu')}</span>
       <span><strong>{readingProgress}</strong><small>%</small></span>
       <em>阅读进度</em>
     </button>
