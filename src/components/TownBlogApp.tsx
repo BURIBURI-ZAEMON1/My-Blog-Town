@@ -18,6 +18,8 @@ type ExplorePanel = 'categories' | 'tags' | 'friends';
 type ReturnContext = {
   surface: MainSurface;
   sidebarPanel: SidebarPanel;
+  sidebarCategory?: string;
+  sidebarTag?: string;
   explorePanel?: ExplorePanel;
   category?: string;
   tag?: string;
@@ -120,6 +122,8 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>();
   const [activeTag, setActiveTag] = useState<string>();
+  const [sidebarCategory, setSidebarCategory] = useState<string>();
+  const [sidebarTag, setSidebarTag] = useState<string>();
   const [previewCategory, setPreviewCategory] = useState<string>();
   const [previewTag, setPreviewTag] = useState<string>();
   const [colorMode, setColorMode] = useState<ColorMode>('day');
@@ -176,7 +180,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
   const sidebarModal = isMobile && mobileSidebarOpen;
   const highlightCategory = previewCategory ?? activeCategory;
   const highlightTag = previewTag ?? activeTag;
-  const sidebarPosts = sidebarPanel === 'category-posts' ? sortedPosts.filter((post) => post.category === activeCategory) : sidebarPanel === 'tag-posts' ? sortedPosts.filter((post) => activeTag && post.tags.includes(activeTag)) : sortedPosts;
+  const sidebarPosts = sidebarPanel === 'category-posts' ? sortedPosts.filter((post) => post.category === sidebarCategory) : sidebarPanel === 'tag-posts' ? sortedPosts.filter((post) => sidebarTag && post.tags.includes(sidebarTag)) : sortedPosts;
 
   useEffect(() => {
     if (surface !== 'article' || !selectedPostId) return;
@@ -279,6 +283,8 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
       if (context && next.surface !== 'article') {
         setSurface(context.surface);
         setSidebarPanel(context.sidebarPanel);
+        setSidebarCategory(context.sidebarCategory);
+        setSidebarTag(context.sidebarTag);
         setExplorePanel(context.explorePanel);
         setActiveCategory(context.category);
         setActiveTag(context.tag);
@@ -325,7 +331,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     // article links to another article, add a history entry without replacing
     // that checkpoint so repeated Back actions eventually restore the origin.
     const enteringArticle = surface !== 'article';
-    const returnContext: ReturnContext = { surface, sidebarPanel, explorePanel, category: activeCategory, tag: activeTag, query, scrollY: mainSurfaceRef.current?.scrollTop ?? 0 };
+    const returnContext: ReturnContext = { surface, sidebarPanel, sidebarCategory, sidebarTag, explorePanel, category: activeCategory, tag: activeTag, query, scrollY: mainSurfaceRef.current?.scrollTop ?? 0 };
     if (enteringArticle) returnContextRef.current = returnContext;
     navigate('article', id, enteringArticle ? { returnContext } : {});
     setExplorePanel(undefined);
@@ -347,6 +353,8 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     setTouchPostId(undefined);
     setActiveCategory(category);
     setActiveTag(undefined);
+    setSidebarCategory(category);
+    setSidebarTag(undefined);
     setSidebarPanel(category ? 'category-posts' : 'categories');
     setExplorePanel(undefined);
     setHoveredPostId(undefined);
@@ -358,6 +366,8 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     setTouchPostId(undefined);
     setActiveTag(tag);
     setActiveCategory(undefined);
+    setSidebarTag(tag);
+    setSidebarCategory(undefined);
     setSidebarPanel(tag ? 'tag-posts' : 'tags');
     setExplorePanel(undefined);
     setHoveredPostId(undefined);
@@ -369,6 +379,8 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     setQuery('');
     setActiveCategory(undefined);
     setActiveTag(undefined);
+    setSidebarCategory(undefined);
+    setSidebarTag(undefined);
     setExplorePanel(undefined);
     setSearchOpen(false);
   };
@@ -407,8 +419,8 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     setHoveredPostId(undefined);
     setHoverAnchor(undefined);
     setExplorePanel(undefined);
-    if (panel === 'categories') setSidebarPanel(activeCategory ? 'category-posts' : 'categories');
-    if (panel === 'tags') setSidebarPanel(activeTag ? 'tag-posts' : 'tags');
+    if (panel === 'categories') setSidebarPanel(sidebarCategory ? 'category-posts' : 'categories');
+    if (panel === 'tags') setSidebarPanel(sidebarTag ? 'tag-posts' : 'tags');
     if (panel === 'friends') setSidebarPanel('friends');
   };
   const chooseMainCategory = (category: string) => {
@@ -469,7 +481,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
             <div className="brand-block"><div className="brand-mark brand-image"><img src={siteConfig.logo} alt="" /></div><div><div className="brand-name">{siteConfig.title}</div><div className="brand-subtitle">{siteConfig.tagline}</div></div><button className="mobile-sidebar-close" type="button" aria-label="关闭侧边栏" onClick={() => setMobileSidebarOpen(false)}>{icon('close')}</button></div>
             <div className="sidebar-rule" />
             <nav className="desktop-sidebar-nav" aria-label="侧边栏入口">
-              <button className={`nav-item ${sidebarPanel === 'profile' ? 'is-active' : ''}`} onClick={() => { setSidebarPanel('profile'); setActiveCategory(undefined); setActiveTag(undefined); setExplorePanel(undefined); }}>{icon('home')}<span>名片</span></button>
+              <button className={`nav-item ${sidebarPanel === 'profile' ? 'is-active' : ''}`} onClick={() => { setSidebarPanel('profile'); setActiveCategory(undefined); setActiveTag(undefined); setSidebarCategory(undefined); setSidebarTag(undefined); setExplorePanel(undefined); }}>{icon('home')}<span>名片</span></button>
               <button className={`nav-item ${sidebarPanel === 'list' ? 'is-active' : ''}`} onClick={() => { setSidebarPanel('list'); setExplorePanel(undefined); }}>{icon('archive')}<span>列表</span><span className="nav-count">{String(posts.length).padStart(2, '0')}</span></button>
               <button className={`nav-item ${sidebarPanel === 'categories' || sidebarPanel === 'category-posts' ? 'is-active' : ''}`} onClick={() => openExplore('categories')}>{icon('category')}<span>分类</span><span className="nav-count">{String(categories.length).padStart(2, '0')}</span></button>
               <button className={`nav-item ${sidebarPanel === 'tags' || sidebarPanel === 'tag-posts' ? 'is-active' : ''}`} onClick={() => openExplore('tags')}>{icon('tag')}<span>标签</span><span className="nav-count">{String(tags.length).padStart(2, '0')}</span></button>
@@ -489,7 +501,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
             </nav>
           </div>
           <div className="sidebar-content-scroll">
-            <SidebarContent panel={sidebarPanel} posts={sidebarPosts} categories={categories} tags={tags} activeCategory={activeCategory} activeTag={activeTag} hoveredPostId={hoveredPostId} onHover={onSidebarPostHover} onCategoryPreview={onCategoryPreview} onTagPreview={onTagPreview} onCategory={chooseCategory} onTag={chooseTag} onOpenArticle={openArticle} onBack={() => { setPreviewCategory(undefined); setPreviewTag(undefined); setSidebarPanel(activeCategory ? 'categories' : activeTag ? 'tags' : 'profile'); setActiveCategory(undefined); setActiveTag(undefined); }} />
+            <SidebarContent panel={sidebarPanel} posts={sidebarPosts} categories={categories} tags={tags} activeCategory={sidebarCategory} activeTag={sidebarTag} hoveredPostId={hoveredPostId} onHover={onSidebarPostHover} onCategoryPreview={onCategoryPreview} onTagPreview={onTagPreview} onCategory={chooseCategory} onTag={chooseTag} onOpenArticle={openArticle} onBack={() => { setPreviewCategory(undefined); setPreviewTag(undefined); setSidebarPanel(sidebarCategory ? 'categories' : sidebarTag ? 'tags' : 'profile'); setSidebarCategory(undefined); setSidebarTag(undefined); setActiveCategory(undefined); setActiveTag(undefined); }} />
           </div>
         </div>
         <div className="sidebar-footer">
