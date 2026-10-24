@@ -13,14 +13,12 @@ import { getSeasonForDate, SEASON_ORDER, SEASON_PROFILES, type Season } from '..
 type SidebarPanel = 'profile' | 'list' | 'categories' | 'category-posts' | 'tags' | 'tag-posts' | 'friends';
 type MainSurface = 'town' | 'article' | 'archive';
 type ColorMode = 'day' | 'night';
-type ExplorePanel = 'categories' | 'tags' | 'friends';
 
 type ReturnContext = {
   surface: MainSurface;
   sidebarPanel: SidebarPanel;
   sidebarCategory?: string;
   sidebarTag?: string;
-  explorePanel?: ExplorePanel;
   category?: string;
   tag?: string;
   query: string;
@@ -144,7 +142,6 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
   const [reducedMotion, setReducedMotion] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchIndex, setSearchIndex] = useState(0);
-  const [explorePanel, setExplorePanel] = useState<ExplorePanel>();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [touchPostId, setTouchPostId] = useState<string>();
@@ -172,7 +169,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     .slice(0, 6)
     .map((result) => result.post), [query, sortedPosts]);
   const selectedPost = selectedPostId ? postMap.get(selectedPostId) : undefined;
-  const newPostIds = useNewPostIds(posts, surface === 'article' && !explorePanel ? selectedPost?.id : undefined);
+  const newPostIds = useNewPostIds(posts, surface === 'article' ? selectedPost?.id : undefined);
   const { showGuide, markExplored } = useTownExploration();
   const guidePostId = showGuide ? sortedPosts[0]?.id : undefined;
   const hoveredPost = hoveredPostId ? postMap.get(hoveredPostId) : undefined;
@@ -285,7 +282,6 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
         setSidebarPanel(context.sidebarPanel);
         setSidebarCategory(context.sidebarCategory);
         setSidebarTag(context.sidebarTag);
-        setExplorePanel(context.explorePanel);
         setActiveCategory(context.category);
         setActiveTag(context.tag);
         setQuery(context.query);
@@ -331,10 +327,9 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     // article links to another article, add a history entry without replacing
     // that checkpoint so repeated Back actions eventually restore the origin.
     const enteringArticle = surface !== 'article';
-    const returnContext: ReturnContext = { surface, sidebarPanel, sidebarCategory, sidebarTag, explorePanel, category: activeCategory, tag: activeTag, query, scrollY: mainSurfaceRef.current?.scrollTop ?? 0 };
+    const returnContext: ReturnContext = { surface, sidebarPanel, sidebarCategory, sidebarTag, category: activeCategory, tag: activeTag, query, scrollY: mainSurfaceRef.current?.scrollTop ?? 0 };
     if (enteringArticle) returnContextRef.current = returnContext;
     navigate('article', id, enteringArticle ? { returnContext } : {});
-    setExplorePanel(undefined);
     setPreviewCategory(undefined);
     setPreviewTag(undefined);
     setHoveredPostId(undefined);
@@ -356,7 +351,6 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     setSidebarCategory(category);
     setSidebarTag(undefined);
     setSidebarPanel(category ? 'category-posts' : 'categories');
-    setExplorePanel(undefined);
     setHoveredPostId(undefined);
     setHoverAnchor(undefined);
   };
@@ -369,7 +363,6 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     setSidebarTag(tag);
     setSidebarCategory(undefined);
     setSidebarPanel(tag ? 'tag-posts' : 'tags');
-    setExplorePanel(undefined);
     setHoveredPostId(undefined);
     setHoverAnchor(undefined);
   };
@@ -381,7 +374,6 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     setActiveTag(undefined);
     setSidebarCategory(undefined);
     setSidebarTag(undefined);
-    setExplorePanel(undefined);
     setSearchOpen(false);
   };
   const onHoverPost = (id?: string, anchor?: SceneAnchor) => {
@@ -412,32 +404,16 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
   const onResolvePostAnchor = (id: string, anchor: SceneAnchor) => {
     if (hoveredPostId === id) setHoverAnchor(anchor);
   };
-  const openExplore = (panel: ExplorePanel) => {
+  const openExplore = (panel: 'categories' | 'tags' | 'friends') => {
     setTouchPostId(undefined);
     setPreviewCategory(undefined);
     setPreviewTag(undefined);
     setHoveredPostId(undefined);
     setHoverAnchor(undefined);
-    setExplorePanel(undefined);
     if (panel === 'categories') setSidebarPanel(sidebarCategory ? 'category-posts' : 'categories');
     if (panel === 'tags') setSidebarPanel(sidebarTag ? 'tag-posts' : 'tags');
     if (panel === 'friends') setSidebarPanel('friends');
   };
-  const chooseMainCategory = (category: string) => {
-    setActiveCategory((current) => current === category ? undefined : category);
-    setActiveTag(undefined);
-    setQuery('');
-    setExplorePanel('categories');
-    if (surface === 'article') navigate('archive');
-  };
-  const chooseMainTag = (tag: string) => {
-    setActiveTag((current) => current === tag ? undefined : tag);
-    setActiveCategory(undefined);
-    setQuery('');
-    setExplorePanel('tags');
-    if (surface === 'article') navigate('archive');
-  };
-
   const selectScenePost = (id: string, pointerType?: string) => {
     if (pointerType === 'touch' && touchPostId !== id) {
       setTouchPostId(id);
@@ -481,26 +457,27 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
             <div className="brand-block"><div className="brand-mark brand-image"><img src={siteConfig.logo} alt="" /></div><div><div className="brand-name">{siteConfig.title}</div><div className="brand-subtitle">{siteConfig.tagline}</div></div><button className="mobile-sidebar-close" type="button" aria-label="关闭侧边栏" onClick={() => setMobileSidebarOpen(false)}>{icon('close')}</button></div>
             <div className="sidebar-rule" />
             <nav className="desktop-sidebar-nav" aria-label="侧边栏入口">
-              <button className={`nav-item ${sidebarPanel === 'profile' ? 'is-active' : ''}`} onClick={() => { setSidebarPanel('profile'); setActiveCategory(undefined); setActiveTag(undefined); setSidebarCategory(undefined); setSidebarTag(undefined); setExplorePanel(undefined); }}>{icon('home')}<span>名片</span></button>
-              <button className={`nav-item ${sidebarPanel === 'list' ? 'is-active' : ''}`} onClick={() => { setSidebarPanel('list'); setExplorePanel(undefined); }}>{icon('archive')}<span>列表</span><span className="nav-count">{String(posts.length).padStart(2, '0')}</span></button>
+              <button className={`nav-item ${sidebarPanel === 'profile' ? 'is-active' : ''}`} onClick={() => { setSidebarPanel('profile'); setActiveCategory(undefined); setActiveTag(undefined); setSidebarCategory(undefined); setSidebarTag(undefined); }}>{icon('home')}<span>名片</span></button>
+              <button className={`nav-item ${sidebarPanel === 'list' ? 'is-active' : ''}`} onClick={() => { setSidebarPanel('list'); }}>{icon('archive')}<span>列表</span><span className="nav-count">{String(posts.length).padStart(2, '0')}</span></button>
               <button className={`nav-item ${sidebarPanel === 'categories' || sidebarPanel === 'category-posts' ? 'is-active' : ''}`} onClick={() => openExplore('categories')}>{icon('category')}<span>分类</span><span className="nav-count">{String(categories.length).padStart(2, '0')}</span></button>
               <button className={`nav-item ${sidebarPanel === 'tags' || sidebarPanel === 'tag-posts' ? 'is-active' : ''}`} onClick={() => openExplore('tags')}>{icon('tag')}<span>标签</span><span className="nav-count">{String(tags.length).padStart(2, '0')}</span></button>
               <button className={`nav-item ${sidebarPanel === 'friends' ? 'is-active' : ''}`} onClick={() => openExplore('friends')}>{icon('friends')}<span>友邻</span><span className="nav-count">{String(friendLinks.length).padStart(2, '0')}</span></button>
             </nav>
-            <nav className="mobile-sidebar-nav" aria-label="侧边栏入口">
+            <div className="mobile-sidebar-nav">
               <nav className="primary-nav">
                 <button className={`nav-item ${surface === 'town' && sidebarPanel === 'profile' ? 'is-active' : ''}`} onClick={() => navigate('town')}>{icon('home')}<span>小镇首页</span><span className="nav-count">01</span></button>
-                <button className={`nav-item ${surface === 'archive' ? 'is-active' : ''}`} onClick={() => { setQuery(''); setActiveCategory(undefined); setActiveTag(undefined); setExplorePanel(undefined); navigate('archive'); }}>{icon('archive')}<span>全部文章</span><span className="nav-count">{String(posts.length).padStart(2, '0')}</span></button>
+                <button className={`nav-item ${surface === 'archive' ? 'is-active' : ''}`} onClick={() => { setQuery(''); setActiveCategory(undefined); setActiveTag(undefined); navigate('archive'); }}>{icon('archive')}<span>全部文章</span><span className="nav-count">{String(posts.length).padStart(2, '0')}</span></button>
               </nav>
               <div className="sidebar-section-label">探索</div>
               <nav className="secondary-nav">
+                <button className={`nav-item ${sidebarPanel === 'profile' ? 'is-active' : ''}`} onClick={() => { setSidebarPanel('profile'); setActiveCategory(undefined); setActiveTag(undefined); setSidebarCategory(undefined); setSidebarTag(undefined); }}>{icon('home')}<span>名片</span></button>
                 <button className={`nav-item ${sidebarPanel === 'categories' || sidebarPanel === 'category-posts' ? 'is-active' : ''}`} onClick={() => openExplore('categories')}>{icon('category')}<span>分类</span><span className="nav-count">{String(categories.length).padStart(2, '0')}</span></button>
                 <button className={`nav-item ${sidebarPanel === 'tags' || sidebarPanel === 'tag-posts' ? 'is-active' : ''}`} onClick={() => openExplore('tags')}>{icon('tag')}<span>标签</span><span className="nav-count">{String(tags.length).padStart(2, '0')}</span></button>
                 <button className={`nav-item ${sidebarPanel === 'friends' ? 'is-active' : ''}`} onClick={() => openExplore('friends')}>{icon('friends')}<span>友邻</span><span className="nav-count">{String(friendLinks.length).padStart(2, '0')}</span></button>
               </nav>
-            </nav>
+            </div>
           </div>
-          <div className="sidebar-content-scroll">
+          <div className={`sidebar-content-scroll ${sidebarPanel === 'profile' ? 'is-profile' : ''}`}>
             <SidebarContent panel={sidebarPanel} posts={sidebarPosts} categories={categories} tags={tags} activeCategory={sidebarCategory} activeTag={sidebarTag} hoveredPostId={hoveredPostId} onHover={onSidebarPostHover} onCategoryPreview={onCategoryPreview} onTagPreview={onTagPreview} onCategory={chooseCategory} onTag={chooseTag} onOpenArticle={openArticle} onBack={() => { setPreviewCategory(undefined); setPreviewTag(undefined); setSidebarPanel(sidebarCategory ? 'categories' : sidebarTag ? 'tags' : 'profile'); setSidebarCategory(undefined); setSidebarTag(undefined); setActiveCategory(undefined); setActiveTag(undefined); }} />
           </div>
         </div>
@@ -514,7 +491,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
         <header className={`topnav ${searchOpen ? 'is-search-open' : ''}`}>
           <button ref={menuButtonRef} className="mobile-sidebar-toggle" type="button" aria-label={mobileSidebarOpen ? '关闭侧边栏' : '打开侧边栏'} aria-expanded={mobileSidebarOpen} aria-controls="site-sidebar" onClick={openMobileSidebar}>{icon(mobileSidebarOpen ? 'close' : 'menu')}</button>
           <a className="top-wordmark" href="https://github.com/BURIBURI-ZAEMON1/Blog-Town" target="_blank" rel="noreferrer noopener" aria-label="Blog Town GitHub 仓库"><span>Blog</span> <strong>Town</strong>{icon('external')}</a>
-          <nav className="desktop-top-links" aria-label="主导航"><button className={`topnav-link ${surface === 'town' ? 'is-active' : ''}`} onClick={() => navigate('town')}>{icon('home')}<span>小镇</span></button><button className={`topnav-link ${surface === 'archive' ? 'is-active' : ''}`} onClick={() => { setQuery(''); setActiveCategory(undefined); setActiveTag(undefined); setExplorePanel(undefined); navigate('archive'); }}>{icon('archive')}<span>档案</span></button></nav>
+          <nav className="desktop-top-links" aria-label="主导航"><button className={`topnav-link ${surface === 'town' ? 'is-active' : ''}`} onClick={() => navigate('town')}><span>小镇</span></button><button className={`topnav-link ${surface === 'archive' ? 'is-active' : ''}`} onClick={() => { setQuery(''); setActiveCategory(undefined); setActiveTag(undefined); navigate('archive'); }}><span>档案</span></button></nav>
           <div className="topnav-center"><div className="top-search"><span>{icon('search')}</span><input ref={inputRef} value={query} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); setSearchIndex(0); }} onFocus={() => setSearchOpen(true)} onKeyDown={onSearchKeyDown} placeholder="寻找一篇笔记…" aria-label="搜索文章" /><kbd>⌘ K</kbd>{searchOpen && query && <SearchDropdown results={searchResults} activeIndex={searchIndex} onHover={onSidebarPostHover} onOpen={openArticle} onArchive={() => { setSearchOpen(false); navigate('archive'); }} />}</div></div>
           <div className="topnav-actions"><button className="mobile-search-toggle" aria-label={searchOpen ? '关闭搜索' : '打开搜索'} aria-expanded={searchOpen} onClick={() => { if (searchOpen) { setSearchOpen(false); inputRef.current?.blur(); } else { setSearchOpen(true); window.requestAnimationFrame(() => inputRef.current?.focus()); } }}>{icon(searchOpen ? 'close' : 'search')}</button><button className="mode-button" onClick={() => setColorMode((mode) => mode === 'day' ? 'night' : 'day')} aria-label="切换昼夜模式">{colorMode === 'day' ? icon('moon') : icon('sun')}<span>{colorMode === 'day' ? '夜间' : '日间'}</span></button><label className="season-control" title={SEASON_PROFILES[season].description}>
             <span className="visually-hidden">小镇季节</span>{icon(SEASON_PROFILES[season].glyph)}
@@ -529,7 +506,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
           </label></div>
         </header>
 
-        {surface !== 'town' && (explorePanel || surface === 'archive') && <ArchiveHeading panel={explorePanel} postCount={posts.length} />}
+        {surface === 'archive' && <ArchiveHeading postCount={posts.length} />}
         <div className="main-scroll" ref={mainSurfaceRef}>
         {surface === 'town' && <section className="town-home">
           <TownStage posts={posts} layout={layout} newPostIds={newPostIds} guidePostId={guidePostId} onTownExplored={markExplored} season={season} activePostId={selectedPostId} hoveredPostId={touchPostId ?? hoveredPostId} query={query} category={highlightCategory} tag={highlightTag} categoryPreview={Boolean(previewCategory)} tagPreview={Boolean(previewTag)} colorMode={colorMode} reducedMotion={reducedMotion} onHoverPost={onHoverPost} onResolvePostAnchor={onResolvePostAnchor} onSelectPost={selectScenePost} hoveredPost={hoveredPost} hoverAnchor={hoverAnchor} touchPost={touchPost} onCloseTouchPreview={() => setTouchPostId(undefined)} />
@@ -537,11 +514,9 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
           <div className="town-caption"><span><i className="caption-dot" /> {siteConfig.title} · {SEASON_PROFILES[season].label}季小镇</span><span>建筑即文章 / {layout.plots.length} buildings / {posts.length} article floors</span><span className="caption-spacer" /><button onClick={() => navigate('archive')}>打开完整档案 {icon('arrow')}</button></div>
           <RecentPosts posts={filteredPosts.slice(0, 5)} hasFilter={Boolean(query || activeCategory || activeTag)} onOpen={openArticle} onClear={clearFilters} sectionRef={recentRef} />
         </section>}
-        {surface !== 'town' && explorePanel && <ExplorePanel panel={explorePanel} categories={categories} tags={tags} posts={posts} activeCategory={activeCategory} activeTag={activeTag} onCategory={chooseMainCategory} onTag={chooseMainTag} />}
-        {surface === 'archive' && !explorePanel && <ArchiveView posts={filteredPosts} compact={false} onOpen={openArticle} />}
-        {surface !== 'town' && explorePanel && explorePanel !== 'friends' && <ArchiveView posts={filteredPosts} compact onOpen={openArticle} />}
-        {surface === 'article' && !explorePanel && selectedPost && <ArticleView post={selectedPost} layout={layout} scrollRoot={mainSurfaceRef} onBack={returnFromArticle} onOpen={openArticle} seriesPosts={selectedPost.series ? sortedPosts.filter((post) => post.series === selectedPost.series).sort((a, b) => (a.seriesIndex ?? 0) - (b.seriesIndex ?? 0)) : []} />}
-        {surface === 'article' && !explorePanel && !selectedPost && <EmptyView title="还没有选择文章" copy="从小镇或侧边栏打开一篇笔记吧。" action="回到小镇" onAction={() => navigate('town')} />}
+        {surface === 'archive' && <ArchiveView posts={filteredPosts} compact={false} onOpen={openArticle} />}
+        {surface === 'article' && selectedPost && <ArticleView post={selectedPost} layout={layout} scrollRoot={mainSurfaceRef} onBack={returnFromArticle} onOpen={openArticle} seriesPosts={selectedPost.series ? sortedPosts.filter((post) => post.series === selectedPost.series).sort((a, b) => (a.seriesIndex ?? 0) - (b.seriesIndex ?? 0)) : []} />}
+        {surface === 'article' && !selectedPost && <EmptyView title="还没有选择文章" copy="从小镇或侧边栏打开一篇笔记吧。" action="回到小镇" onAction={() => navigate('town')} />}
         </div>
       </main>
     </div>
@@ -565,10 +540,8 @@ function TownTooltip({ post, anchor }: { post?: TownPost; anchor?: SceneAnchor }
 
 function RecentPosts({ posts, hasFilter, onOpen, onClear, sectionRef }: { posts: TownPost[]; hasFilter: boolean; onOpen: (id: string) => void; onClear: () => void; sectionRef: React.RefObject<HTMLElement | null> }) { return <section className="recent-posts" ref={sectionRef}><header><div><span className="section-eyebrow">RECENT NOTES</span><h2>{hasFilter ? '当前筛选下的最近笔记' : '最近写下的几件事'}</h2></div><span className="recent-count">{String(posts.length).padStart(2, '0')} / notes</span></header>{posts.length ? <div className="recent-grid">{posts.map((post) => <button key={post.id} className="recent-card" onClick={() => onOpen(post.id)}><span className="card-top"><span>{post.category}</span><span>{formatDate(post.date)}</span></span><strong>{post.title}</strong><p>{post.description}</p><span className="card-bottom">#{post.tags[0]} <i /> 阅读 {post.readingTime} 分钟 {icon('arrow')}</span></button>)}</div> : <EmptyView title="这条路暂时没有笔记" copy="换一个筛选条件，或者回到地图看看别的房子。" action="清除筛选" onAction={onClear} />}</section>; }
 
-function ArchiveHeading({ panel, postCount }: { panel?: ExplorePanel; postCount: number }) {
-  const titles = { categories: ['CATEGORIES', '分类'], tags: ['TAGS', '标签'], friends: ['FRIEND LINKS', '友邻'] } as const;
-  const [eyebrow, title] = panel ? titles[panel] : [`THE ARCHIVE · ${String(postCount).padStart(2, '0')} NOTES`, '文章档案'];
-  return <header className="archive-heading archive-shell-heading"><div><span className="section-eyebrow">{eyebrow}</span><h1>{title}</h1></div></header>;
+function ArchiveHeading({ postCount }: { postCount: number }) {
+  return <header className="archive-heading archive-shell-heading"><div><span className="section-eyebrow">THE ARCHIVE · {String(postCount).padStart(2, '0')} NOTES</span><h1>文章档案</h1></div></header>;
 }
 
 function ArchiveView({ posts, compact, onOpen }: { posts: TownPost[]; compact: boolean; onOpen: (id: string) => void }) {
@@ -716,102 +689,6 @@ function ArticleContents({ headings, activeHeadingId, readingProgress }: Article
   </div>;
 }
 
-
-function liquidLightPath(stretch: number) {
-  const radius = 20;
-  const curve = radius * .5523;
-  const tail = stretch * 20;
-  const taper = curve * (1 - stretch * .9);
-  return `M ${radius} 0 C ${radius} ${-curve} ${curve} ${-radius} 0 ${-radius} C ${-curve} ${-radius} ${-radius - tail * .7} ${-taper} ${-radius - tail} 0 C ${-radius - tail * .7} ${taper} ${-curve} ${radius} 0 ${radius} C ${curve} ${radius} ${radius} ${curve} ${radius} 0 Z`;
-}
-
-function ExplorePill({ label, count, selected, onSelect }: { label: string; count?: number; selected: boolean; onSelect: () => void }) {
-  const gradientId = useId();
-  const shapeRef = useRef<SVGPathElement>(null);
-  const lightRef = useRef({ x: .5, y: .5, targetX: .5, targetY: .5, width: 1, height: 1, stretch: 0, frame: 0 });
-  useEffect(() => () => window.cancelAnimationFrame(lightRef.current.frame), []);
-
-  const followLight = (button: HTMLButtonElement) => {
-    const light = lightRef.current;
-    const dx = (light.targetX - light.x) * light.width;
-    const dy = (light.targetY - light.y) * light.height;
-    const distance = Math.hypot(dx, dy);
-    const stretch = Math.min(distance / 28, 1);
-    light.stretch += (stretch - light.stretch) * .32;
-    if (distance > 1) button.style.setProperty('--liquid-angle', `${Math.atan2(dy, dx)}rad`);
-    shapeRef.current?.setAttribute('d', liquidLightPath(light.stretch));
-    light.x += (light.targetX - light.x) * .2;
-    light.y += (light.targetY - light.y) * .2;
-    button.style.setProperty('--glass-x', `${light.x * 100}%`);
-    button.style.setProperty('--glass-y', `${light.y * 100}%`);
-    if (distance > .15 || light.stretch > .005) {
-      light.frame = window.requestAnimationFrame(() => followLight(button));
-    } else {
-      light.stretch = 0;
-      shapeRef.current?.setAttribute('d', liquidLightPath(0));
-      light.frame = 0;
-    }
-  };
-  const moveLight = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (event.pointerType !== 'mouse') return;
-    const button = event.currentTarget;
-    const bounds = button.getBoundingClientRect();
-    const x = (event.clientX - bounds.left) / bounds.width;
-    const y = (event.clientY - bounds.top) / bounds.height;
-    button.style.setProperty('--tip-x', `${x * 100}%`);
-    button.style.setProperty('--tip-y', `${y * 100}%`);
-    const light = lightRef.current;
-    light.targetX = x;
-    light.targetY = y;
-    light.width = bounds.width;
-    light.height = bounds.height;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      window.cancelAnimationFrame(light.frame);
-      light.frame = 0;
-      light.stretch = 0;
-      light.x = x;
-      light.y = y;
-      shapeRef.current?.setAttribute('d', liquidLightPath(0));
-      button.style.setProperty('--glass-x', `${x * 100}%`);
-      button.style.setProperty('--glass-y', `${y * 100}%`);
-      button.style.removeProperty('--liquid-angle');
-    } else if (!light.frame) {
-      light.frame = window.requestAnimationFrame(() => followLight(button));
-    }
-  };
-  const resetLight = (event: React.PointerEvent<HTMLButtonElement>) => {
-    const button = event.currentTarget;
-    const light = lightRef.current;
-    window.cancelAnimationFrame(light.frame);
-    light.x = light.y = light.targetX = light.targetY = .5;
-    light.stretch = 0;
-    light.frame = 0;
-    shapeRef.current?.setAttribute('d', liquidLightPath(0));
-    button.style.removeProperty('--glass-x');
-    button.style.removeProperty('--glass-y');
-    button.style.removeProperty('--tip-x');
-    button.style.removeProperty('--tip-y');
-    button.style.removeProperty('--liquid-angle');
-  };
-  const select = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      event.currentTarget.animate([
-        { transform: 'scale(1)' },
-        { transform: 'scale(.94)', offset: .33 },
-        { transform: 'scale(1.045)', offset: .68 },
-        { transform: 'scale(1)' },
-      ], { duration: 390, easing: 'cubic-bezier(.2,.8,.2,1)' });
-    }
-    onSelect();
-  };
-  return <button type="button" className={selected ? 'is-selected' : ''} aria-pressed={selected} onPointerMove={moveLight} onPointerLeave={resetLight} onClick={select}><svg className="explore-liquid" viewBox="-48 -48 96 96" aria-hidden="true"><defs><radialGradient id={gradientId} cx="57%" cy="50%" r="77%"><stop className="liquid-core" offset="0" /><stop className="liquid-body" offset=".4" /><stop className="liquid-tail" offset=".78" /><stop className="liquid-edge" offset="1" /></radialGradient></defs><path ref={shapeRef} d={liquidLightPath(0)} fill={`url(#${gradientId})`} /></svg><span>{label}</span>{count !== undefined && <b>{count}</b>}</button>;
-}
-
-function ExplorePanel({ panel, categories, tags, posts, activeCategory, activeTag, onCategory, onTag }: { panel: ExplorePanel; categories: string[]; tags: string[]; posts: TownPost[]; activeCategory?: string; activeTag?: string; onCategory: (value: string) => void; onTag: (value: string) => void }) {
-  if (panel === 'friends') return <section className="main-explore-panel friends-explore">{friendLinks.length > 0 ? <div className="main-friends-list">{friendLinks.map((friend) => <a className="main-friend-row" href={friend.url} target="_blank" rel="noreferrer noopener" key={friend.id}><span className="friend-avatar"><img src={friend.avatar} alt="" loading="lazy" /></span><span><strong>{friend.nickname}</strong>{friend.description && <small>{friend.description}</small>}<em>{new URL(friend.url).hostname}</em></span>{icon('external')}</a>)}</div> : <div className="sidebar-empty">尚未配置友链。</div>}</section>;
-  if (panel === 'categories') return <section className="main-explore-panel"><div className="explore-pills">{categories.map((category) => <ExplorePill key={category} label={category} count={posts.filter((post) => post.category === category).length} selected={activeCategory === category} onSelect={() => onCategory(category)} />)}</div></section>;
-  return <section className="main-explore-panel"><div className="explore-pills">{tags.map((tag) => <ExplorePill key={tag} label={`#${tag}`} selected={activeTag === tag} onSelect={() => onTag(tag)} />)}</div></section>;
-}
 
 function MiniTownMap({ post, layout }: { post: TownPost; layout: TownLayout }) {
   const map = createTownMapModel(layout, post.id);
