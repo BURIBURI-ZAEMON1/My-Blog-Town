@@ -6,7 +6,7 @@
 
 ## 1. 快速开始
 
-环境要求：Node.js 20 或更高版本。
+环境要求：Node.js 22.23.4 或更高版本（与当前 Astro 版本一致）。
 
 ```bash
 npm install
@@ -196,7 +196,7 @@ cp src/content/posts/_article-template.md.example src/content/posts/my-first-pos
 
 ## 7. Markdown 正文
 
-正文支持常见 Markdown：
+正文支持常见 Markdown 和 Obsidian 风格扩展，完整写法见第 13 节：
 
 ````md
 ## 二级标题
@@ -239,6 +239,7 @@ npm run dev              # 启动开发服务器
 npm run check            # Astro 与 TypeScript 检查
 npm run build            # 构建静态站点
 npm run verify:content   # 检查文章 ID 与本地资源引用
+npm run verify:markdown  # 检查 Markdown、公式、图表、嵌入与 HTML 安全过滤
 npm run verify           # 执行完整检查、构建和小镇回归测试
 npm run preview          # 本地预览 dist/ 构建结果
 ```
@@ -321,3 +322,107 @@ src/scene/brick-town/weather.ts   共享雨雪渲染及运动生命周期
 ```
 
 运行 `npm run verify:seasons` 可检查换季时布局和基础网格稳定、覆盖物避让、雪盖拾取、反复切换资源释放及减少动态效果；`npm run verify` 已包含该检查。
+
+
+## 13. Obsidian 风格的文章渲染（正式博客）
+
+本节描述正式博客 `Project` 中的实现；尚未同步到开源框架。文章继续放在 `src/content/posts/`，无需更换文件格式。渲染结果在构建时生成，不依赖读者浏览器下载代码高亮、MathJax 或图表渲染引擎。
+
+### 基础排版与代码
+
+普通段落中的单换行直接显示为换行，空行另起段落。支持标题、粗体、斜体、引用、有序／无序列表、表格、分隔线、图片、链接，以及：
+
+```markdown
+~~删除线~~
+==高亮文字==
+
+- [ ] 未完成任务
+- [x] 已完成任务
+
+[外部文档](https://example.com)
+```
+
+外部链接有下划线和末尾的链接图标，并在新标签页打开。任务列表作为文章内容展示，复选框不可交互。
+
+多行代码用三个反引号围起，在开头标注语言。Shiki 按明暗主题显示高亮；常用标记包括 `js`、`javascript`、`ts`、`typescript`、`tsx`、`jsx`、`python`、`bash`、`shell`、`powershell`、`json`、`yaml`、`html`、`css`、`sql`、`java`、`c`、`cpp`、`go`、`rust`。语言名不区分大小写；未指定或未知语言保留为纯文本代码块。
+
+### 提示框
+
+用 `> [!颜色] 可选标题` 开始，后续内容继续使用引用语法。支持 `red`、`blue`、`yellow`、`green`、`purple` 和 `gary`（也接受 `gray`、`grey`）。标题使用深色，背景使用同色系浅色；没有前置图标。
+
+```markdown
+> [!blue] 阅读提示
+> 支持 **粗体**、==高亮==、链接、列表、代码与公式。
+> 每一行继续以 > 开始。
+>
+> > [!purple]- 嵌套且默认收起
+> > 这里是内层内容。
+
+> [!red]+ 默认展开，可点击标题折叠
+> 内容。
+
+> [!green]
+> 不需要标题时省略标题。
+
+> [!]- 不指定颜色，默认蓝色
+> 默认收起的内容。
+```
+
+`[!颜色]+` 默认展开，`[!颜色]-` 默认收起；没有 `+`／`-` 时为普通提示框。可折叠框没有标题时显示「提示」。使用键盘可聚焦标题，再按 Enter 或空格展开。
+
+### 数学公式
+
+使用 MathJax 生成 SVG，支持行内 `$...$` 和独立的 `$$...$$`，包括 AMS 公式环境和文章内的自定义命令。公式颜色随主题调整；长的独立公式在自己的区域内横向滚动。
+
+```latex
+行内公式 $E = mc^2$。
+
+$$
+\sum_{i=1}^{n} i = \frac{n(n+1)}{2}
+$$
+```
+
+字面的美元符号写成 `\$`，代码块和行内代码中的公式语法不会执行。为保留 HTML 安全边界，不启用 TeX 的 HTML、远程加载或链接扩展。公式或图表语法有误时保留原文，便于排查，不中断整篇文章。
+
+### 文件嵌入
+
+资源应位于 `public/` 内。推荐填写网站根路径，也可以使用唯一文件名：
+
+```markdown
+![[/assets/posts/my-post/示意图.png]]
+![[/assets/posts/my-post/示意图.png|360]]
+![[/assets/posts/my-post/示意图.png|360x240]]
+![[/assets/posts/my-post/示意图.png|图片替代文字]]
+![[/assets/posts/my-post/录音.mp3]]
+![[/assets/posts/my-post/演示.mp4]]
+![[/assets/posts/my-post/文档.pdf#page=2]]
+![[https://example.com/image.png]]
+```
+
+支持图片、音频、视频与 PDF；其他附件显示文件链接。PDF 下方保留打开文件的链接，便于不支持内嵌 PDF 的设备阅读。图片尺寸会受正文宽度限制。支持中文和空格文件名。
+
+相对文件名优先在 `public/assets/posts/<文章源文件 ID>/` 中查找，再查找公开资源中的唯一匹配。重名时请填写完整路径；缺失资源会显示提示。磁盘绝对路径、`..`、符号链接和公开目录之外的文件不会被读取。
+
+可独占一行嵌入已发布文章，例如 `![[obsidian-sync]]`、`![[obsidian-sync.md]]` 或 `![[文章标题]]`。存在重名时填写相对于 `src/content/posts/` 的完整路径。不会嵌入草稿或尚未到发布日期的文章；循环或过深的嵌入会停止，并保留原文章链接。句子内部的文章嵌入显示为文章链接。
+
+当前只支持整篇文章嵌入，暂不支持文章章节／块引用、双向链接或反向链接。
+
+### Pele 图表
+
+图表由 Pele 渲染。保留 Mermaid 源语法，围栏语言写 `mermaid` 或 `pele` 均可：
+
+````markdown
+```mermaid
+flowchart LR
+  A[小镇] --> B[文章建筑]
+  B --> C[阅读文章]
+```
+
+```pele
+sequenceDiagram
+  访客->>小镇: 选择一栋建筑
+  小镇-->>访客: 打开文章
+```
+````
+
+SVG 颜色随站点主题调整。图表中的图片、外部链接和点击脚本不启用。
