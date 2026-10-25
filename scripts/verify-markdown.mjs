@@ -121,7 +121,6 @@ try {
   assert.match(embedded, /href="\/archive.zip"/);
   assert.match(embedded, /class="article-embed-note" data-embed-key="[^"]+" role="group"/);
   assert.match(embedded, /class="embed-note-summary" role="button"[^>]*aria-expanded="true"/);
-assert.match(embedded, /class="embed-note-link" href="\/posts\/a\/"/);
 assert.match(embedded, /class="embed-note-source"/);
 assert.doesNotMatch(embedded, /<details class="article-embed/);
   assert.match(embedded, /class="article-embed article-file-embed" data-embed-key="[^"]+" role="group"/);

@@ -205,8 +205,7 @@ export async function renderArticleMarkdown(markdown: string, options: MarkdownO
           const embedded = await renderArticleMarkdown(note.markdown, { resources, documentKey: note.key, embedStack: [...stack, note.key] });
           const contents = embedded.sections.map((section) => `${section.heading ? `<h${Math.min(6, section.heading.level + 2)}>${section.heading.html}</h${Math.min(6, section.heading.level + 2)}>` : ''}${section.html}`).join('');
           const embedKey = `${options.documentKey ?? 'article'}-embed-${embedNumber++}`;
-          const headerLink = `<a class="embed-note-link" href="${escapeHtml(note.href)}" aria-label="打开文章：${escapeHtml(note.title)}">↗</a>`;
-          token.rendered = protect(`<div class="article-embed-note" data-embed-key="${escapeHtml(embedKey)}" role="group"><div class="embed-note-summary" role="button" tabindex="0" aria-expanded="true"><span>嵌入文章 · </span><span class="embed-note-title">${escapeHtml(note.title)}</span>${headerLink}<span class="embed-note-toggle" aria-hidden="true"></span></div><div class="article-embed-body"><div class="embed-note-source">${link}</div>${contents}</div></div>`, note.title);
+          token.rendered = protect(`<div class="article-embed-note" data-embed-key="${escapeHtml(embedKey)}" role="group"><div class="embed-note-summary" role="button" tabindex="0" aria-expanded="true"><span>嵌入文章 · </span><span class="embed-note-title">${escapeHtml(note.title)}</span><span class="embed-note-toggle" aria-hidden="true"></span></div><div class="article-embed-body"><div class="embed-note-source">${link}</div>${contents}</div></div>`, note.title);
         }
       }
     } else if (token.type === 'mathInline' || token.type === 'mathBlock') {

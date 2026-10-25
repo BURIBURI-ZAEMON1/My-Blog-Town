@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ElementType } from 'react';
 import type { SceneAnchor, TownPost } from './TownScene';
 import TownLoading from './TownLoading';
@@ -13,6 +13,7 @@ import { getSeasonForDate, SEASON_ORDER, SEASON_PROFILES, type Season } from '..
 type SidebarPanel = 'profile' | 'list' | 'categories' | 'category-posts' | 'tags' | 'tag-posts' | 'friends';
 type MainSurface = 'town' | 'article' | 'archive';
 type ColorMode = 'day' | 'night';
+const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 type ReturnContext = {
   surface: MainSurface;
@@ -571,7 +572,7 @@ function ArticleView({ post, layout, seriesPosts, scrollRoot, onBack, onOpen }: 
     setActiveHeadingId(headings[0]?.id);
     setReadingProgress(0);
   }, [post.id]);
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const article = document.querySelector<HTMLElement>('.article-page');
     if (!article) return;
     article.querySelectorAll<HTMLElement>('[data-embed-key]').forEach((container) => {
