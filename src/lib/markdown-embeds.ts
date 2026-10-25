@@ -85,14 +85,14 @@ export function createMarkdownResources(publicDirectory: string, documents: Embe
   };
 }
 
-export function renderFileEmbed(resource: Extract<EmbedResource, { kind: 'file' }>, label: string, inline: boolean) {
+export function renderFileEmbed(resource: Extract<EmbedResource, { kind: 'file' }>, label: string, inline: boolean, embedKey = '') {
   const url = escapeHtml(resource.url);
   const dimensions = /^(\d{1,4})(?:x(\d{1,4}))?$/.exec(label);
   const width = dimensions && Number(dimensions[1]) > 0 ? Number(dimensions[1]) : undefined;
   const height = dimensions?.[2] && Number(dimensions[2]) > 0 ? Number(dimensions[2]) : undefined;
   const name = escapeHtml(dimensions ? resource.name : label || resource.name);
   const attrs = `${width ? ` width="${width}"` : ''}${height ? ` height="${height}"` : ''}`;
-  const wrap = (content: string) => inline ? content : `<details class="article-embed article-file-embed" open><summary class="embed-file-summary">${name}<span class="embed-note-toggle" aria-hidden="true"></span></summary><div class="article-embed-body">${content}</div></details>`;
+  const wrap = (content: string) => inline ? content : `<div class="article-embed article-file-embed"${embedKey ? ` data-embed-key="${escapeHtml(embedKey)}"` : ''} role="group"><div class="embed-file-summary" role="button" tabindex="0" aria-expanded="true">${name}<span class="embed-note-toggle" aria-hidden="true"></span></div><div class="article-embed-body">${content}</div></div>`;
   if (/^(png|jpe?g|gif|webp|avif|svg|bmp)$/.test(resource.extension)) {
     const image = `<img class="article-embed-image" src="${url}" alt="${name}"${attrs} loading="lazy" decoding="async" />`;
     return inline ? image : wrap(`<figure>${image}</figure>`);

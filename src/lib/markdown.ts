@@ -29,7 +29,7 @@ const sanitizeArticleHtml = (html: string) => sanitizeHtml(html, {
     ...sanitizeHtml.defaults.allowedAttributes,
     a: ['href', 'title', 'target', 'rel', 'download', 'class'],
     img: ['src', 'alt', 'title', 'width', 'height', 'loading', 'decoding'],
-    code: ['class', 'title'], div: ['class'], figure: ['class'], span: ['class', 'aria-hidden'],
+    code: ['class', 'title'], div: ['class', 'role', 'tabindex', 'aria-expanded', 'aria-label'], figure: ['class'], span: ['class', 'aria-hidden'],
     aside: ['class'], details: ['class', 'open'], summary: ['class'],
     input: ['type', 'checked', 'disabled', 'aria-label'],
   },
@@ -55,6 +55,7 @@ export interface MarkdownOptions {
 
 export async function renderArticleMarkdown(markdown: string, options: MarkdownOptions = {}): Promise<RenderedArticle> {
   const fragments = new Map<string, string>();
+  let embedNumber = 0;
   const fragmentText = new Map<string, string>();
   const prefix = `BLOG_RENDER_${randomUUID().replaceAll('-', '')}_`;
   const protect = (html: string, text = '') => {
@@ -193,7 +194,7 @@ export async function renderArticleMarkdown(markdown: string, options: MarkdownO
       if (resource.kind === 'missing') {
         token.rendered = `<span class="article-embed-missing">${escapeHtml(resource.message)}</span>`;
       } else if (resource.kind === 'file') {
-        token.rendered = protect(renderFileEmbed(resource, label, inline), label || resource.name);
+        token.rendered = protect(renderFileEmbed(resource, label, inline, `${options.documentKey ?? 'article'}-embed-${embedNumber++}`), label || resource.name);
       } else {
         const note = resource.document;
         const stack = options.embedStack ?? (options.documentKey ? [options.documentKey] : []);
@@ -203,7 +204,9 @@ export async function renderArticleMarkdown(markdown: string, options: MarkdownO
         } else {
           const embedded = await renderArticleMarkdown(note.markdown, { resources, documentKey: note.key, embedStack: [...stack, note.key] });
           const contents = embedded.sections.map((section) => `${section.heading ? `<h${Math.min(6, section.heading.level + 2)}>${section.heading.html}</h${Math.min(6, section.heading.level + 2)}>` : ''}${section.html}`).join('');
-          token.rendered = protect(`<details class="article-embed-note" open><summary class="embed-note-summary"><span>嵌入文章 · </span>${link}<span class="embed-note-toggle" aria-hidden="true"></span></summary><div class="article-embed-body">${contents}</div></details>`, note.title);
+          const embedKey = `${options.documentKey ?? 'article'}-embed-${embedNumber++}`;
+          const headerLink = `<a class="embed-note-link" href="${escapeHtml(note.href)}" aria-label="打开文章：${escapeHtml(note.title)}">↗</a>`;
+          token.rendered = protect(`<div class="article-embed-note" data-embed-key="${escapeHtml(embedKey)}" role="group"><div class="embed-note-summary" role="button" tabindex="0" aria-expanded="true"><span>嵌入文章 · </span><span class="embed-note-title">${escapeHtml(note.title)}</span>${headerLink}<span class="embed-note-toggle" aria-hidden="true"></span></div><div class="article-embed-body"><div class="embed-note-source">${link}</div>${contents}</div></div>`, note.title);
         }
       }
     } else if (token.type === 'mathInline' || token.type === 'mathBlock') {

@@ -564,31 +564,58 @@ function ArticleView({ post, layout, seriesPosts, scrollRoot, onBack, onOpen }: 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [activeHeadingId, setActiveHeadingId] = useState<string | undefined>(headings[0]?.id);
   const [readingProgress, setReadingProgress] = useState(0);
+  const collapsedEmbeds = useRef(new Set<string>());
   useEffect(() => {
     setCollapsed({});
+    collapsedEmbeds.current.clear();
     setActiveHeadingId(headings[0]?.id);
     setReadingProgress(0);
   }, [post.id]);
+  useEffect(() => {
+    const article = document.querySelector<HTMLElement>('.article-page');
+    if (!article) return;
+    article.querySelectorAll<HTMLElement>('[data-embed-key]').forEach((container) => {
+      const key = container.dataset.embedKey;
+      const collapsed = Boolean(key && collapsedEmbeds.current.has(key));
+      container.classList.toggle('is-collapsed', collapsed);
+      container.querySelector<HTMLElement>(':scope > .embed-note-summary, :scope > .embed-file-summary')?.setAttribute('aria-expanded', String(!collapsed));
+    });
+  });
   useEffect(() => {
     const root = scrollRoot.current;
     const article = document.querySelector<HTMLElement>('.article-page');
     if (!root || !article) return;
     let restoreFrame: number | undefined;
-    const toggleEmbed = (summary: HTMLElement, event: Event) => {
-      const details = summary.parentElement;
-      if (!(details instanceof HTMLDetailsElement)) return;
+    const getSummary = (event: Event) => {
       const target = event.target as Element | null;
-      if (target?.closest('a')) return;
+      return target?.closest<HTMLElement>('.article-embed-note > .embed-note-summary, .article-file-embed > .embed-file-summary');
+    };
+    const toggleEmbed = (summary: HTMLElement, event: Event) => {
+      if ((event.target as Element | null)?.closest('a')) return;
+      const container = summary.parentElement;
+      if (!container) return;
       event.preventDefault();
       event.stopPropagation();
       const rootTop = root.scrollTop;
+      const summaryTop = summary.getBoundingClientRect().top;
       const aside = article.querySelector<HTMLElement>('.article-aside');
       const asideTop = aside?.scrollTop ?? 0;
       const previousAnchor = root.style.overflowAnchor;
+      const collapsed = container.classList.toggle('is-collapsed');
+      const key = container.dataset.embedKey;
+      if (key) {
+        if (collapsed) collapsedEmbeds.current.add(key);
+        else collapsedEmbeds.current.delete(key);
+      }
+      summary.setAttribute('aria-expanded', String(!collapsed));
       root.style.overflowAnchor = 'none';
-      details.open = !details.open;
       const restore = () => {
-        root.scrollTop = rootTop;
+        const currentSummaryTop = summary.getBoundingClientRect().top;
+        const anchorDelta = currentSummaryTop - summaryTop;
+        root.scrollTop = Math.max(0, root.scrollTop + anchorDelta);
+        // Keep the original position when the new document height allows it;
+        // otherwise the browser's maximum is the only valid scroll position.
+        if (Math.abs(anchorDelta) < 1) root.scrollTop = Math.min(rootTop, root.scrollHeight - root.clientHeight);
         if (aside) aside.scrollTop = asideTop;
       };
       restore();
@@ -602,12 +629,7 @@ function ArticleView({ post, layout, seriesPosts, scrollRoot, onBack, onOpen }: 
         });
       });
     };
-    const getSummary = (event: Event) => {
-      const target = event.target as Element | null;
-      return target?.closest<HTMLElement>('.article-embed-note > summary, .article-file-embed > summary');
-    };
-    const onPointerDown = (event: PointerEvent) => {
-      if (event.button !== 0) return;
+    const onClick = (event: MouseEvent) => {
       const summary = getSummary(event);
       if (summary) toggleEmbed(summary, event);
     };
@@ -616,17 +638,11 @@ function ArticleView({ post, layout, seriesPosts, scrollRoot, onBack, onOpen }: 
       const summary = getSummary(event);
       if (summary) toggleEmbed(summary, event);
     };
-    const onClick = (event: MouseEvent) => {
-      const summary = getSummary(event);
-      if (summary && !(event.target as Element | null)?.closest('a')) event.preventDefault();
-    };
-    article.addEventListener('pointerdown', onPointerDown, true);
-    article.addEventListener('keydown', onKeyDown, true);
     article.addEventListener('click', onClick, true);
+    article.addEventListener('keydown', onKeyDown, true);
     return () => {
-      article.removeEventListener('pointerdown', onPointerDown, true);
-      article.removeEventListener('keydown', onKeyDown, true);
       article.removeEventListener('click', onClick, true);
+      article.removeEventListener('keydown', onKeyDown, true);
       if (restoreFrame !== undefined) window.cancelAnimationFrame(restoreFrame);
     };
   }, [post.id, scrollRoot]);

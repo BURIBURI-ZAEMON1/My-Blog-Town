@@ -119,9 +119,12 @@ try {
   assert.match(embedded, /<video[^>]*controls/);
   assert.match(embedded, /<object[^>]*data="\/report.pdf#page=2"/);
   assert.match(embedded, /href="\/archive.zip"/);
-  assert.match(embedded, /class="article-embed-note" open/);
-  assert.match(embedded, /class="embed-note-summary"/);
-  assert.match(embedded, /class="article-embed article-file-embed" open/);
+  assert.match(embedded, /class="article-embed-note" data-embed-key="[^"]+" role="group"/);
+  assert.match(embedded, /class="embed-note-summary" role="button"[^>]*aria-expanded="true"/);
+assert.match(embedded, /class="embed-note-link" href="\/posts\/a\/"/);
+assert.match(embedded, /class="embed-note-source"/);
+assert.doesNotMatch(embedded, /<details class="article-embed/);
+  assert.match(embedded, /class="article-embed article-file-embed" data-embed-key="[^"]+" role="group"/);
   assert.match(embedded, /甲正文/);
   assert.match(embedded, /乙正文/);
   assert.match(embedded, /已停止重复或过深的嵌入/);
