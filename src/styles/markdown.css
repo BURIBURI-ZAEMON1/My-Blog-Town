@@ -123,3 +123,16 @@
   .article-section-content .article-embed-body { padding-inline: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .article-section-content .embed-note-toggle { transition: none; } }
+
+/* Embed expansion changes article height; the click handler restores the reader
+   position so the sticky map and contents rail do not jump with native details. */
+.article-section-content .article-embed-note,
+.article-section-content .article-file-embed { overflow-anchor: none; }
+
+.article-section-content pre.shiki { border-radius: 9px; }
+
+.article-section-content input[type="checkbox"] { appearance: none; -webkit-appearance: none; border: 1.5px solid #7d9084; border-radius: 3px; background: transparent; accent-color: transparent; }
+.article-section-content input[type="checkbox"]:checked { border-color: #7d9084; background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3.2 8.2 3 3 6.6-6.4' fill='none' stroke='%237d9084' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 88% 88% no-repeat; }
+.mode-night .article-section-content input[type="checkbox"],
+.mode-night .article-section-content input[type="checkbox"]:checked { border-color: #71867a; }
+.mode-night .article-section-content input[type="checkbox"]:checked { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3.2 8.2 3 3 6.6-6.4' fill='none' stroke='%2393d5a5' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }

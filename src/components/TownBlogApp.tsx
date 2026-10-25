@@ -571,6 +571,67 @@ function ArticleView({ post, layout, seriesPosts, scrollRoot, onBack, onOpen }: 
   }, [post.id]);
   useEffect(() => {
     const root = scrollRoot.current;
+    const article = document.querySelector<HTMLElement>('.article-page');
+    if (!root || !article) return;
+    let restoreFrame: number | undefined;
+    const toggleEmbed = (summary: HTMLElement, event: Event) => {
+      const details = summary.parentElement;
+      if (!(details instanceof HTMLDetailsElement)) return;
+      const target = event.target as Element | null;
+      if (target?.closest('a')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const rootTop = root.scrollTop;
+      const aside = article.querySelector<HTMLElement>('.article-aside');
+      const asideTop = aside?.scrollTop ?? 0;
+      const previousAnchor = root.style.overflowAnchor;
+      root.style.overflowAnchor = 'none';
+      details.open = !details.open;
+      const restore = () => {
+        root.scrollTop = rootTop;
+        if (aside) aside.scrollTop = asideTop;
+      };
+      restore();
+      if (restoreFrame !== undefined) window.cancelAnimationFrame(restoreFrame);
+      restoreFrame = window.requestAnimationFrame(() => {
+        restore();
+        restoreFrame = window.requestAnimationFrame(() => {
+          restore();
+          root.style.overflowAnchor = previousAnchor;
+          restoreFrame = undefined;
+        });
+      });
+    };
+    const getSummary = (event: Event) => {
+      const target = event.target as Element | null;
+      return target?.closest<HTMLElement>('.article-embed-note > summary, .article-file-embed > summary');
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      const summary = getSummary(event);
+      if (summary) toggleEmbed(summary, event);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const summary = getSummary(event);
+      if (summary) toggleEmbed(summary, event);
+    };
+    const onClick = (event: MouseEvent) => {
+      const summary = getSummary(event);
+      if (summary && !(event.target as Element | null)?.closest('a')) event.preventDefault();
+    };
+    article.addEventListener('pointerdown', onPointerDown, true);
+    article.addEventListener('keydown', onKeyDown, true);
+    article.addEventListener('click', onClick, true);
+    return () => {
+      article.removeEventListener('pointerdown', onPointerDown, true);
+      article.removeEventListener('keydown', onKeyDown, true);
+      article.removeEventListener('click', onClick, true);
+      if (restoreFrame !== undefined) window.cancelAnimationFrame(restoreFrame);
+    };
+  }, [post.id, scrollRoot]);
+  useEffect(() => {
+    const root = scrollRoot.current;
     if (!root) return;
     let frame: number | undefined;
     const updateReadingState = () => {
