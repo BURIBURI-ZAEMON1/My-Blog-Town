@@ -27,7 +27,7 @@ const sanitizeArticleHtml = (html: string) => sanitizeHtml(html, {
     'img', 'figure', 'figcaption', 'details', 'summary', 'kbd', 'mark', 'del', 'input'],
   allowedAttributes: {
     ...sanitizeHtml.defaults.allowedAttributes,
-    a: ['href', 'title', 'target', 'rel', 'download'],
+    a: ['href', 'title', 'target', 'rel', 'download', 'class'],
     img: ['src', 'alt', 'title', 'width', 'height', 'loading', 'decoding'],
     code: ['class', 'title'], div: ['class'], figure: ['class'], span: ['class', 'aria-hidden'],
     aside: ['class'], details: ['class', 'open'], summary: ['class'],
@@ -88,6 +88,14 @@ export async function renderArticleMarkdown(markdown: string, options: MarkdownO
         tokenizer(src) {
           const match = /^!\[\[([^\]\n]+)\]\]/.exec(src);
           if (match) return { type: 'embedInline', raw: match[0], source: match[1] };
+        },
+        renderer: (token) => token.rendered,
+      },
+      {
+        name: 'wikilink', level: 'inline', start: (src) => src.indexOf('[['),
+        tokenizer(src) {
+          const match = /^\[\[([^\]\n]+)\]\]/.exec(src);
+          if (match) return { type: 'wikilink', raw: match[0], source: match[1] };
         },
         renderer: (token) => token.rendered,
       },
@@ -164,7 +172,19 @@ export async function renderArticleMarkdown(markdown: string, options: MarkdownO
   const richTokens: Token[] = [];
   md.walkTokens(tokens, (token) => { richTokens.push(token); });
   for (const token of richTokens) {
-    if (token.type === 'embedBlock' || token.type === 'embedInline') {
+    if (token.type === 'wikilink') {
+      const [reference, ...labels] = (token.source as string).split('|');
+      const label = labels.join('|').trim();
+      const resources = options.resources ??= createMarkdownResources(resolve('public'));
+      const resource = resources.resolveEmbed(reference, options.documentKey);
+      if (resource.kind === 'document') {
+        token.rendered = `<a class="article-wikilink" href="${escapeHtml(resource.document.href)}">${escapeHtml(label || resource.document.title)}</a>`;
+      } else if (resource.kind === 'file') {
+        token.rendered = `<a class="article-wikilink article-wikilink-file" href="${escapeHtml(resource.url)}">${escapeHtml(label || resource.name)}</a>`;
+      } else {
+        token.rendered = `<span class="article-wikilink-missing" title="${escapeHtml(resource.message)}">[[${escapeHtml(token.source as string)}]]</span>`;
+      }
+    } else if (token.type === 'embedBlock' || token.type === 'embedInline') {
       const [reference, ...labels] = (token.source as string).split('|');
       const label = labels.join('|').trim();
       const resources = options.resources ??= createMarkdownResources(resolve('public'));
@@ -183,7 +203,7 @@ export async function renderArticleMarkdown(markdown: string, options: MarkdownO
         } else {
           const embedded = await renderArticleMarkdown(note.markdown, { resources, documentKey: note.key, embedStack: [...stack, note.key] });
           const contents = embedded.sections.map((section) => `${section.heading ? `<h${Math.min(6, section.heading.level + 2)}>${section.heading.html}</h${Math.min(6, section.heading.level + 2)}>` : ''}${section.html}`).join('');
-          token.rendered = protect(`<div class="article-embed-note"><div class="embed-note-title">${link}</div>${contents}</div>`, note.title);
+          token.rendered = protect(`<details class="article-embed-note" open><summary class="embed-note-summary"><span>嵌入文章 · </span>${link}<span class="embed-note-toggle" aria-hidden="true"></span></summary><div class="article-embed-body">${contents}</div></details>`, note.title);
         }
       }
     } else if (token.type === 'mathInline' || token.type === 'mathBlock') {

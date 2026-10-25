@@ -85,3 +85,5 @@ sequenceDiagram
 ![[assets/posts/obsidian-sync/cover.png]]
 
 ![[assets/posts/obsidian-sync/missing.txt]]
+
+[[obsidian-sync]]、[[folder/a|另一篇文章]]、[[unknown-note|未找到的文章]]。

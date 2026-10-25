@@ -24,14 +24,23 @@ const getHighlighter = () => highlighter ??= createHighlighter({
   themes: ['github-light', 'github-dark'], langs: [],
 });
 
+const languageLabels: Record<string, string> = {
+  js: 'JavaScript', javascript: 'JavaScript', jsx: 'JSX', ts: 'TypeScript', typescript: 'TypeScript', tsx: 'TSX',
+  py: 'Python', python: 'Python', sh: 'Shell', shell: 'Shell', bash: 'Bash', zsh: 'Zsh', powershell: 'PowerShell',
+  json: 'JSON', yaml: 'YAML', yml: 'YAML', html: 'HTML', css: 'CSS', scss: 'SCSS', sql: 'SQL',
+  md: 'Markdown', markdown: 'Markdown', c: 'C', cpp: 'C++', java: 'Java', go: 'Go', rust: 'Rust',
+};
+
 export async function renderCode(text: string, info = '') {
   const requested = info.trim().split(/\s+/)[0].toLowerCase();
   const lang = Object.hasOwn(bundledLanguages, requested) ? requested as BundledLanguage : 'text';
   const engine = await getHighlighter();
   if (lang !== 'text') await engine.loadLanguage(lang);
-  return engine.codeToHtml(text, {
+  const html = engine.codeToHtml(text, {
     lang, themes: { light: 'github-light', dark: 'github-dark' }, defaultColor: false,
   });
+  const label = requested ? languageLabels[requested] ?? requested : '';
+  return label ? html.replace('<pre ', `<pre data-language="${escapeHtml(label)}" `) : html;
 }
 
 export function createMathRenderer() {

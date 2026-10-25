@@ -92,19 +92,20 @@ export function renderFileEmbed(resource: Extract<EmbedResource, { kind: 'file' 
   const height = dimensions?.[2] && Number(dimensions[2]) > 0 ? Number(dimensions[2]) : undefined;
   const name = escapeHtml(dimensions ? resource.name : label || resource.name);
   const attrs = `${width ? ` width="${width}"` : ''}${height ? ` height="${height}"` : ''}`;
+  const wrap = (content: string) => inline ? content : `<details class="article-embed article-file-embed" open><summary class="embed-file-summary">${name}<span class="embed-note-toggle" aria-hidden="true"></span></summary><div class="article-embed-body">${content}</div></details>`;
   if (/^(png|jpe?g|gif|webp|avif|svg|bmp)$/.test(resource.extension)) {
     const image = `<img class="article-embed-image" src="${url}" alt="${name}"${attrs} loading="lazy" decoding="async" />`;
-    return inline ? image : `<figure class="article-embed">${image}</figure>`;
+    return inline ? image : wrap(`<figure>${image}</figure>`);
   }
   if (/^(mp3|wav|ogg|m4a|aac|flac|opus)$/.test(resource.extension)) {
-    return `<audio class="article-embed-audio" controls preload="metadata" src="${url}" aria-label="${name}"><a href="${url}">收听 ${name}</a></audio>`;
+    return wrap(`<audio class="article-embed-audio" controls preload="metadata" src="${url}" aria-label="${name}"><a href="${url}">收听 ${name}</a></audio>`);
   }
   if (/^(mp4|webm|mov|m4v|ogv)$/.test(resource.extension)) {
-    return `<video class="article-embed-video" controls preload="metadata" playsinline src="${url}" aria-label="${name}"${attrs}><a href="${url}">观看 ${name}</a></video>`;
+    return wrap(`<video class="article-embed-video" controls preload="metadata" playsinline src="${url}" aria-label="${name}"${attrs}><a href="${url}">观看 ${name}</a></video>`);
   }
   const link = `<a class="article-embed-file" href="${url}" target="_blank" rel="noreferrer noopener">${name}<span class="external-link-icon" aria-hidden="true"></span></a>`;
   if (resource.extension === 'pdf' && !inline) {
-    return `<figure class="article-embed"><object class="article-embed-pdf" data="${url}" type="application/pdf" aria-label="${name}">${link}</object><figcaption>${link}</figcaption></figure>`;
+    return wrap(`<object class="article-embed-pdf" data="${url}" type="application/pdf" aria-label="${name}">${link}</object><figcaption>${link}</figcaption>`);
   }
-  return link;
+  return inline ? link : wrap(link);
 }
