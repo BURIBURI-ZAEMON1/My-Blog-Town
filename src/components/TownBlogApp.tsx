@@ -287,6 +287,10 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     const path = nextSurface === 'article' && postId
       ? `/posts/${encodeURIComponent(postId)}/`
       : nextSurface === 'archive' ? '/posts/' : '/';
+    // A visible entry can point back to the page that is already open (for
+    // example, the current item in a series drawer). Do not create a second
+    // browser-history entry for the same canonical route.
+    if (window.location.pathname === path && !window.location.search) return;
     window.history.pushState({ surface: nextSurface, postId }, '', path);
   };
 
