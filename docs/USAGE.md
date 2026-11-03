@@ -144,7 +144,18 @@ export const friendLinks: FriendLink[] = [
 src/content/posts/
 ```
 
-仓库提供了不会被构建系统读取的模板：
+在项目根目录运行：
+
+```bash
+pnpm new "My New Post"
+# 也支持 npm run new -- "My New Post"
+```
+
+命令会生成 `src/content/posts/my-new-post.md`，自动填写 `townId: post-my-new-post`、包含本地时区的当前日期及 `draft: true`。英文文件名会转为小写，词间空格替换为 `-`；也可带 `.md` 后缀。已有同名文件不会被覆盖。
+
+标题、摘要、分类和其他内容按需填写。生成的空字段和两个空标签项是待填写占位；内容校验也会检查草稿，因此请先补齐必填字段，不需要标签时将 `tags` 改为 `tags: []`，不需要封面时删除 `cover` 和 `coverAlt`。
+
+若需要带详细字段注释的模板，仓库还提供了不会被构建系统读取的文件：
 
 ```text
 src/content/posts/_article-template.md.example
@@ -235,6 +246,7 @@ src/scene/brick-town/                  Babylon.js 小镇渲染代码
 ## 9. 常用命令
 
 ```bash
+pnpm new "My New Post"   # 新建文章草稿
 npm run dev              # 启动开发服务器
 npm run check            # Astro 与 TypeScript 检查
 npm run build            # 构建静态站点
