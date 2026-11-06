@@ -172,7 +172,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
   useEffect(() => {
     if (surface !== 'article' || !selectedPostId) return;
     const frame = window.requestAnimationFrame(() => {
-      mainSurfaceRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+      if (!window.location.hash) mainSurfaceRef.current?.scrollTo({ top: 0, behavior: 'auto' });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [selectedPostId, surface]);
@@ -284,7 +284,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
       setTouchPostId(undefined);
       setSearchOpen(false);
       setMobileSidebarOpen(false);
-      window.setTimeout(() => mainSurfaceRef.current?.scrollTo({ top: 0, behavior: 'auto' }), 0);
+      window.setTimeout(() => { if (!window.location.hash) mainSurfaceRef.current?.scrollTo({ top: 0, behavior: 'auto' }); }, 0);
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -551,6 +551,53 @@ function ArticleView({ post, layout, seriesPosts, scrollRoot, onOpen }: { post: 
     setActiveHeadingId(headings[0]?.id);
     setReadingProgress(0);
   }, [post.id]);
+  useEffect(() => {
+    let frame: number | undefined;
+    const revealReference = () => {
+      if (!window.location.hash) return;
+      let id: string;
+      try { id = decodeURIComponent(window.location.hash.slice(1)); } catch { return; }
+      // Sections may have been unmounted by the heading folding control.
+      // Restore them before looking up the requested block or heading.
+      setCollapsed({});
+      if (frame !== undefined) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const root = scrollRoot.current;
+        const target = document.getElementById(id);
+        if (!root || !target || !target.closest('.article-body')) return;
+        for (let parent = target.parentElement; parent && parent !== root; parent = parent.parentElement) {
+          if (parent instanceof HTMLDetailsElement) parent.open = true;
+          if (parent.classList.contains('is-collapsed')) {
+            parent.classList.remove('is-collapsed');
+            const key = parent.dataset.embedKey;
+            if (key) collapsedEmbeds.current.delete(key);
+            parent.querySelector(':scope > [aria-expanded]')?.setAttribute('aria-expanded', 'true');
+          }
+        }
+        const top = root.scrollTop + target.getBoundingClientRect().top - root.getBoundingClientRect().top - 104;
+        root.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
+      });
+    };
+    const onReferenceClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[href]');
+      if (!link || link.target || link.hasAttribute('download')) return;
+      const url = new URL(link.href, window.location.href);
+      if (!url.hash || url.origin !== window.location.origin || url.pathname !== window.location.pathname || url.search !== window.location.search) return;
+      event.preventDefault();
+      if (window.location.hash !== url.hash) window.history.pushState(window.history.state, '', url.href);
+      revealReference();
+    };
+    const article = document.querySelector('.article-page');
+    article?.addEventListener('click', onReferenceClick as EventListener);
+    window.addEventListener('hashchange', revealReference);
+    revealReference();
+    return () => {
+      article?.removeEventListener('click', onReferenceClick as EventListener);
+      window.removeEventListener('hashchange', revealReference);
+      if (frame !== undefined) window.cancelAnimationFrame(frame);
+    };
+  }, [post.id, scrollRoot]);
   useIsomorphicLayoutEffect(() => {
     const article = document.querySelector<HTMLElement>('.article-page');
     if (!article) return;
