@@ -139,15 +139,9 @@
 .article-section-content .article-embed-note.is-collapsed > .embed-note-summary .embed-note-toggle,
 .article-section-content .article-file-embed.is-collapsed > .embed-file-summary .embed-note-toggle { transform: rotate(45deg) translateY(-2px); }
 
-/* Reference destinations retain their source context without adding chrome. */
-.article-reference-anchor { display: block; height: 0; scroll-margin-top: 104px; }
-.article-heading-row :target,
-.article-reference-anchor:target + :is(p, blockquote, aside, details, ul, ol, table, pre) { animation: reference-arrival 1.8s ease-out; }
-@keyframes reference-arrival {
-  from { background-color: color-mix(in srgb, var(--sage) 16%, transparent); }
-  to { background-color: transparent; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .article-heading-row :target,
-  .article-reference-anchor:target + * { animation: none; }
-}
+/* Keep the arrival wash behind content; authored highlight colors stay intact. */
+.article-page { --reference-highlight: rgba(113, 187, 255, .3); }
+.mode-night .article-page { --reference-highlight: rgba(104, 181, 255, .24); }
+.article-reference-anchor { display: block; height: 0; scroll-margin-top: 136px; }
+.article-body { position: relative; isolation: isolate; }
+.article-reference-wash { position: absolute; z-index: -1; pointer-events: none; border-radius: 9px; background: var(--reference-highlight); }
