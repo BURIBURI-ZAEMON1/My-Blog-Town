@@ -492,3 +492,18 @@ SVG 颜色随站点主题调整。图表中的图片、外部链接和点击脚�
 
 独占一行的 `![[...]]` 文件或文章嵌入会显示一个轻量标题栏。点击右侧小箭头可以展开或收起全部嵌入内容；文章嵌入标题中的文章名称仍可直接点击跳转。行内嵌入（例如段落中的小图片）保持行内显示，不增加折叠容器。
 
+
+
+## 14. 文章评论（Giscus）
+
+文章底部通过 Giscus 展示评论，使用公开仓库 `BURIBURI-ZAEMON1/My-Blog-Town` 的 `Announcements` Discussion 分类。读者可以直接阅读评论，登录 GitHub 并授权 Giscus 后即可评论或回应。首次评论或回应时由 Giscus 建立对应的讨论，单纯浏览不会创建空讨论。
+
+配置集中在 `src/config/comments.ts`：`enabled` 控制是否展示评论区；`repo`、`repoId`、`category` 和 `categoryId` 来自 Giscus 仓库配置。它们都是公开标识，不需要在前端保存 GitHub Token。
+
+每篇文章按其永久 `townId` 精确关联讨论，修改文章标题或从内容引用进入文章不会改变评论归属。已发布文章不要随意修改 `townId`，否则会关联到新的讨论。
+
+评论在接近文章底部时加载，随站点日夜模式切换；切换文章时会显示该文章自己的评论。正文阅读进度不包含评论区。Giscus 暂不可用时可点击「重新加载」，或通过评论区右上角入口访问 GitHub Discussions。
+
+仓库需保持公开、启用 Discussions，并将 Giscus App 授权给该仓库。仓库或分类变更后，应从 Giscus 配置页重新核对公开 ID。GitHub 登录回跳保留当前文章，授权会话保存在浏览器本地的 `giscus-session` 中。
+
+本地运行博客后，可用 `PLAYWRIGHT_CHANNEL=chrome npm run verify:giscus-ui` 检查懒加载、失败重试、文章映射、主题切换和登录回跳；检查使用模拟评论服务，不会发布真实评论。构建预览可通过 `TOWN_BLOG_TEST_URL=http://127.0.0.1:4325` 指定地址。需要安装 Playwright 浏览器，或指定本机已有的 Chrome。
