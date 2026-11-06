@@ -1,5 +1,5 @@
 ---
-townId: post-reflections-on-skills3
+townId: post-reflections-on-skills
 title: 一个好的 skill 应该如何被炼制出来
 description: 从制作、优化、迭代,再到完全重制一个 skill 的过程出发,谈谈我对炼制 skill 的理解
 date: 2026-10-24T15:50:13+08:00
@@ -8,7 +8,7 @@ tags:
   - skill
   - AI
 cover: /assets/posts/reflections-on-skills/cover.png
-coverAlt: 谈谈 skill 的炼制与优化
+coverAlt: 一个好的 skill 应该如何被炼制出来
 draft: false
 ---
 前段时间自己写了几个 skill,进行了持续优化,并把其中我认为效果不错的进行了开源.在这个过程中我慢慢积累了一些自己的理解,所以想用这篇博客记录一下我对炼制 skill 的理解.那么很显然这篇的标题取得有些标题党,因为我只是谈一下我自己的理解.
