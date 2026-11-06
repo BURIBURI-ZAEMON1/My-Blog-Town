@@ -189,6 +189,18 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
   }, []);
 
   useEffect(() => {
+    if (!isMobile || !searchOpen) return;
+    const dismissSearch = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('.topnav-center, .mobile-search-toggle')) return;
+      setSearchOpen(false);
+      inputRef.current?.blur();
+    };
+    document.addEventListener('pointerdown', dismissSearch);
+    return () => document.removeEventListener('pointerdown', dismissSearch);
+  }, [isMobile, searchOpen]);
+
+  useEffect(() => {
     if (!sidebarModal) return;
     const sidebar = sidebarRef.current;
     if (!sidebar) return;
@@ -223,10 +235,11 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
         event.preventDefault();
         if (sidebarRef.current?.getAttribute('aria-modal') === 'true') return;
         setSearchOpen(true);
-        window.requestAnimationFrame(() => inputRef.current?.focus());
+        window.requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
       }
       if (event.key === 'Escape') {
         setSearchOpen(false);
+        inputRef.current?.blur();
         setHoveredPostId(undefined);
         setHoverAnchor(undefined);
         setMobileSidebarOpen(false);
@@ -452,8 +465,8 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
           <button ref={menuButtonRef} className="mobile-sidebar-toggle" type="button" aria-label={mobileSidebarOpen ? '关闭侧边栏' : '打开侧边栏'} aria-expanded={mobileSidebarOpen} aria-controls="site-sidebar" onClick={openMobileSidebar}>{icon(mobileSidebarOpen ? 'close' : 'menu')}</button>
           <a className="top-wordmark" href="https://github.com/BURIBURI-ZAEMON1/Blog-Town" target="_blank" rel="noreferrer noopener" aria-label="Blog Town GitHub 仓库"><span>Blog</span> <strong>Town</strong>{icon('external')}</a>
           <nav className="desktop-top-links" aria-label="主导航"><button className={`topnav-link ${surface === 'town' ? 'is-active' : ''}`} onClick={() => navigate('town')}><span>小镇</span></button><button className={`topnav-link ${surface === 'archive' ? 'is-active' : ''}`} onClick={() => { setQuery(''); setActiveCategory(undefined); setActiveTag(undefined); navigate('archive'); }}><span>档案</span></button></nav>
-          <div className="topnav-center"><div className="top-search"><span>{icon('search')}</span><input ref={inputRef} value={query} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); setSearchIndex(0); }} onFocus={() => setSearchOpen(true)} onKeyDown={onSearchKeyDown} placeholder="寻找一篇笔记…" aria-label="搜索文章" /><kbd>⌘ K</kbd>{searchOpen && query && <SearchDropdown results={searchResults} activeIndex={searchIndex} onHover={onSidebarPostHover} onOpen={openArticle} onArchive={() => { setSearchOpen(false); navigate('archive'); }} />}</div></div>
-          <div className="topnav-actions"><button className="mobile-search-toggle" aria-label={searchOpen ? '关闭搜索' : '打开搜索'} aria-expanded={searchOpen} onClick={() => { if (searchOpen) { setSearchOpen(false); inputRef.current?.blur(); } else { setSearchOpen(true); window.requestAnimationFrame(() => inputRef.current?.focus()); } }}>{icon(searchOpen ? 'close' : 'search')}</button><button className="mode-button" onClick={() => setColorMode((mode) => mode === 'day' ? 'night' : 'day')} aria-label="切换昼夜模式">{colorMode === 'day' ? icon('moon') : icon('sun')}<span>{colorMode === 'day' ? '夜间' : '日间'}</span></button><label className="season-control" title={SEASON_PROFILES[season].description}>
+          <div className="topnav-center" id="topnav-search"><div className="top-search"><span>{icon('search')}</span><input ref={inputRef} value={query} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); setSearchIndex(0); }} onFocus={() => setSearchOpen(true)} onKeyDown={onSearchKeyDown} placeholder="寻找一篇笔记…" aria-label="搜索文章" /><kbd>⌘ K</kbd>{searchOpen && query && <SearchDropdown results={searchResults} activeIndex={searchIndex} onHover={onSidebarPostHover} onOpen={openArticle} onArchive={() => { setSearchOpen(false); navigate('archive'); }} />}</div></div>
+          <div className="topnav-actions"><button className="mobile-search-toggle" aria-controls="topnav-search" aria-label={searchOpen ? '关闭搜索' : '打开搜索'} aria-expanded={searchOpen} onClick={() => { if (searchOpen) { setSearchOpen(false); inputRef.current?.blur(); } else { setSearchOpen(true); window.requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true })); } }}>{icon(searchOpen ? 'close' : 'search')}</button><button className="mode-button" onClick={() => setColorMode((mode) => mode === 'day' ? 'night' : 'day')} aria-label="切换昼夜模式">{colorMode === 'day' ? icon('moon') : icon('sun')}<span>{colorMode === 'day' ? '夜间' : '日间'}</span></button><label className="season-control" title={SEASON_PROFILES[season].description}>
             <span className="visually-hidden">小镇季节</span>{icon(SEASON_PROFILES[season].glyph)}
             <select aria-label="小镇季节" value={automaticSeason ? 'auto' : season} onChange={(event) => {
               const value=event.target.value;
