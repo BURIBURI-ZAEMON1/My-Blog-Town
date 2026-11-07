@@ -63,11 +63,22 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     const clamped=clampToPanBounds(camera.target,panBounds);
     camera.target.x=clamped.x;camera.target.z=clamped.z;
   };
-  const fit=()=>{
-    const aspect=canvas.clientWidth/Math.max(1,canvas.clientHeight);
-    const span=(mobile?34:Math.max(37,54/aspect))/zoom;
-    camera.orthoTop=span/2;camera.orthoBottom=-span/2;
-    camera.orthoLeft=-span*aspect/2;camera.orthoRight=span*aspect/2;
+  let fittedWidth=0;
+  const fit=(preserveView=false)=>{
+    const width=canvas.clientWidth,height=canvas.clientHeight;
+    if(!width||!height)return;
+    if(mobile&&preserveView&&width===fittedWidth){
+      // Browser chrome can resize the viewport when returning from system settings.
+      // Extend/crop the bottom, keeping world scale and the top of the map fixed.
+      const perPixel=(camera.orthoRight!-camera.orthoLeft!)/width;
+      camera.orthoBottom=camera.orthoTop!-height*perPixel;
+    }else{
+      const aspect=width/height;
+      const span=(mobile?34:Math.max(37,54/aspect))/zoom;
+      camera.orthoTop=span/2;camera.orthoBottom=-span/2;
+      camera.orthoLeft=-span*aspect/2;camera.orthoRight=span*aspect/2;
+    }
+    fittedWidth=width;
     clampCameraTarget();engine.resize();
   };
   fit();
@@ -202,7 +213,17 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   let pinch:{startDistance:number;startZoom:number;moved:boolean}|undefined;
   const clampZoom=(value:number)=>Math.max(0.75,Math.min(2.6,value));
   const distanceBetween=(a:{x:number;y:number},b:{x:number;y:number})=>Math.hypot(a.x-b.x,a.y-b.y);
-  const applyZoom=(nextZoom:number)=>{const clamped=clampZoom(nextZoom);if(Math.abs(clamped-zoom)<0.0001)return;zoom=clamped;fit();};
+  const applyZoom=(nextZoom:number)=>{
+    const clamped=clampZoom(nextZoom);if(Math.abs(clamped-zoom)<0.0001)return;
+    const scale=zoom/clamped;
+    const centerX=(camera.orthoLeft!+camera.orthoRight!)/2,centerY=(camera.orthoTop!+camera.orthoBottom!)/2;
+    // Zoom the current framing, including any bottom crop from browser chrome.
+    camera.orthoLeft=centerX+(camera.orthoLeft!-centerX)*scale;
+    camera.orthoRight=centerX+(camera.orthoRight!-centerX)*scale;
+    camera.orthoTop=centerY+(camera.orthoTop!-centerY)*scale;
+    camera.orthoBottom=centerY+(camera.orthoBottom!-centerY)*scale;
+    zoom=clamped;clampCameraTarget();
+  };
   function pick(event:PointerEvent){
     const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;
     // Pick ALL real solid surfaces. Roof/terrain/tree occlusion is respected;
@@ -279,7 +300,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   const onCancel=(e:PointerEvent)=>finishPointer(e,false);
   canvas.addEventListener('wheel',onWheel,{passive:false});canvas.addEventListener('pointermove',onMove);canvas.addEventListener('pointerleave',onLeave);canvas.addEventListener('pointerdown',onDown);canvas.addEventListener('pointerup',onUp);canvas.addEventListener('pointercancel',onCancel);
   populate();lighting();update(initial);
-  const resize=new ResizeObserver(()=>{fit();if(state.hoveredPostId)anchor(state.hoveredPostId);});resize.observe(canvas.parentElement!);
+  const resize=new ResizeObserver(()=>{fit(true);if(state.hoveredPostId)anchor(state.hoveredPostId);});resize.observe(canvas.parentElement!);
   let lastDiagnostics=0,slowRenderFrames=0;
   function publishDiagnostics(now:number){
     canvas.dataset.ready='true';canvas.dataset.frames=String(frames);canvas.dataset.weather=rainy?weather.kind:'clear';canvas.dataset.season=state.season;canvas.dataset.colorMode=state.colorMode;canvas.dataset.reducedMotion=String(state.reducedMotion);canvas.dataset.seasonChanges=String(seasonChanges);canvas.dataset.seasonCover=String(seasons.coverCount);canvas.dataset.seasonTransition=String(seasons.transitioning);canvas.dataset.precipitationAnimated=String(weather.animated);canvas.dataset.renderer=engine.webGLVersion===2?'webgl2':'webgl1';
