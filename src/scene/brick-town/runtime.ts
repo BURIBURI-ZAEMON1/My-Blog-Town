@@ -34,6 +34,7 @@ export type SceneCallbacks = Pick<TownSceneProps,'onHoverPost'|'onResolvePostAnc
 const color=(hex:string)=>Color3.FromHexString(hex);
 
 export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:TownSceneProps['posts'],initial:SceneState,callbacks:()=>SceneCallbacks,onFirstFrame?:()=>void) {
+  const buildStarted=performance.now();
   const mobile=canvas.clientWidth<720;
   const engine=new Engine(canvas,true,{stencil:true,preserveDrawingBuffer:false,powerPreference:'default'});
   // A 1.25 DPR ceiling keeps bevel highlights crisp while avoiding the 2.25x
@@ -93,7 +94,9 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   // Only static architecture and scenery cast shadows. Rendering this depth map
   // once preserves the same town lighting without paying for it every frame.
   shadows.getShadowMap()!.refreshRate=0;
+  const worldStarted=performance.now();
   const world=buildWorld(scene,layout,mobile);
+  canvas.dataset.worldBuildMs=String(Math.round(performance.now()-worldStarted));
   const houses=layout.plots.map(p=>buildHouse(scene,p,mobile));
   const houseMeshes=houses.flatMap(h=>h.meshes);
   const postNotices=createPostNoticeProjector(scene,camera,houses);
@@ -300,8 +303,9 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   const onCancel=(e:PointerEvent)=>finishPointer(e,false);
   canvas.addEventListener('wheel',onWheel,{passive:false});canvas.addEventListener('pointermove',onMove);canvas.addEventListener('pointerleave',onLeave);canvas.addEventListener('pointerdown',onDown);canvas.addEventListener('pointerup',onUp);canvas.addEventListener('pointercancel',onCancel);
   populate();lighting();update(initial);
+  canvas.dataset.sceneBuildMs=String(Math.round(performance.now()-buildStarted));
   const resize=new ResizeObserver(()=>{fit(true);if(state.hoveredPostId)anchor(state.hoveredPostId);});resize.observe(canvas.parentElement!);
-  let lastDiagnostics=0,slowRenderFrames=0;
+  let lastDiagnostics=0,slowRenderFrames=0,firstFramePublished=false;
   function publishDiagnostics(now:number){
     canvas.dataset.ready='true';canvas.dataset.frames=String(frames);canvas.dataset.weather=rainy?weather.kind:'clear';canvas.dataset.season=state.season;canvas.dataset.colorMode=state.colorMode;canvas.dataset.reducedMotion=String(state.reducedMotion);canvas.dataset.seasonChanges=String(seasonChanges);canvas.dataset.seasonCover=String(seasons.coverCount);canvas.dataset.seasonTransition=String(seasons.transitioning);canvas.dataset.precipitationAnimated=String(weather.animated);canvas.dataset.renderer=engine.webGLVersion===2?'webgl2':'webgl1';
     canvas.dataset.cameraX=camera.target.x.toFixed(2);canvas.dataset.cameraZ=camera.target.z.toFixed(2);canvas.dataset.zoom=zoom.toFixed(3);canvas.dataset.rainDrops=String(weather.count);
@@ -334,7 +338,12 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     const renderStarted=performance.now();scene.render();const renderCost=performance.now()-renderStarted;frames++;
     const noticeFrame=postNotices.project(state.newPostIds, state.guidePostId, canvas.clientWidth, canvas.clientHeight);
     if(noticeFrame)callbacks().onResolveNewPostAnchors?.(noticeFrame);
-    if(frames===1){onFirstFrame?.();window.setTimeout(()=>{void initVisualEffects();},mobile?350:0);}
+    if(!firstFramePublished&&scene.isReady()){
+      // A render call can finish while shader/texture imports are still pending.
+      // Keep the loader until the base town can actually be drawn.
+      firstFramePublished=true;
+      onFirstFrame?.();window.setTimeout(()=>{void initVisualEffects();},mobile?350:0);
+    }
     if(ao&&renderCost>55){slowRenderFrames++;if(slowRenderFrames>=4){ao.dispose();ao=undefined;canvas.dataset.adaptiveAo='off';}}else slowRenderFrames=Math.max(0,slowRenderFrames-1);
     if(frames===1||now-lastDiagnostics>500)publishDiagnostics(now);
   }
