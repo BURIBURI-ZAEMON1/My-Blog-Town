@@ -38,7 +38,7 @@ export const siteConfig: SiteConfig = {
   tagline: 'Heaven’s Door',
   description: '黑蚊子多的个人博客，记录技术学习、工具捣鼓与项目经历。',
   siteUrl: 'https://www.heavensdoor1.top/',
-  logo: '/assets/profile/logo.png',
+  logo: '/assets/profile/logo.webp',
   language: 'zh-CN',
   townSeed: 'heavens-door-town-v1',
   profile: {
@@ -65,4 +65,5 @@ export const friendLinks: FriendLink[] = [
   { id: 'ximo', nickname: '惜寞', avatar: '/assets/friends/ximo.jpg', url: 'https://lonesome.cn' },
   { id: 'diamond-boy', nickname: 'Diamond boy', avatar: '/assets/friends/Diamond_boy.png', url: 'https://blog.stargazer-luciddream.top' },
   { id: 'true', nickname: '十且八', avatar: '/assets/friends/true.jpg', url: 'https://sqbtt.cn' },
+  { id: 'H2SO4', nickname: 'H2SO4', avatar: '/assets/friends/H2SO4.jpg', url: 'https://h2so4.site' },
 ];

@@ -11,6 +11,20 @@ export default defineConfig({
   // syntax-highlighting pass inside Astro's content loader.
   markdown: { syntaxHighlight: false },
   vite: {
+    build: {
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [{
+              name: 'town-webgl-shaders',
+              // Keep the original GLSL intact, but deliver its shared include
+              // graph together instead of dozens of tiny startup requests.
+              test: (id) => /\/@babylonjs\/core\/Shaders\/(?:ShadersInclude\/|(?:pbr|shadowMap|depthBoxBlur|color|postprocess|rgbdDecode|ssao2|ssaoCombine|pass)\.(?:vertex|fragment)\.js$)/.test(id.replaceAll('\\', '/')),
+            }],
+          },
+        },
+      },
+    },
     plugins: [{
       name: 'astro-routes-hmr-compat',
       enforce: 'post',

@@ -35,6 +35,7 @@ try {
   const context = await browser.newContext({ viewport: desktop ? { width: 1440, height: 1000 } : { width: 390, height: 844 }, deviceScaleFactor: desktop ? 1.25 : 1, isMobile: !desktop, hasTouch: !desktop, colorScheme: 'light' });
   const page = await context.newPage(), errors = [], requests = [], fontRequests = [], imageErrors = [];
   page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   page.on('response', response => { if (response.status() >= 400) imageErrors.push(response.url()); });
   page.on('request', request => {
     requests.push(request.url());
@@ -84,7 +85,7 @@ try {
     await page.waitForFunction(() => [...document.querySelectorAll('.brand-image img, .profile-avatar')].every(image => image.complete && image.naturalWidth > 0));
     assert(sidebarSources.every(url => requests.includes(url)), 'desktop artwork was not loaded');
   } else {
-    assert(!requests.some(url => /ssao2RenderingPipeline/.test(url)), 'mobile fetched desktop-only contact shadows');
+    assert(!requests.some(url => /ssao2RenderingPipeline|desktop-pipeline/.test(url)), 'mobile fetched desktop-only contact shadows');
     assert(sidebarSources.every(url => !requests.includes(url)), 'hidden mobile artwork downloaded during startup');
     await page.getByRole('button', { name: '打开侧边栏', exact: true }).click();
     await page.waitForFunction(() => [...document.querySelectorAll('.brand-image img, .profile-avatar')].every(image => image.complete && image.naturalWidth > 0));

@@ -36,7 +36,7 @@ const color=(hex:string)=>Color3.FromHexString(hex);
 // prepass can arrive before the first render rather than invalidating already
 // compiled PBR materials later. Mobile never fetches this optional pipeline.
 const contactShadowModule=typeof window!=='undefined'&&window.innerWidth>=720
-  ? import('@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline.js').catch(()=>undefined)
+  ? import('./desktop-pipeline').catch(()=>undefined)
   : undefined;
 
 export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:TownSceneProps['posts'],initial:SceneState,callbacks:()=>SceneCallbacks,onFirstFrame?:()=>void) {
@@ -143,8 +143,8 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     lighting();
     update(state);
   };
-  let ao:import('@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline.js').SSAO2RenderingPipeline|undefined;
-  if(!mobile&&engine.webGLVersion===2) void (contactShadowModule??import('@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline.js')).then(module=>{
+  let ao:import('./desktop-pipeline').SSAO2RenderingPipeline|undefined;
+  if(!mobile&&engine.webGLVersion===2) void (contactShadowModule??import('./desktop-pipeline')).then(module=>{
     if(disposed||!module)return;
     ao=new module.SSAO2RenderingPipeline('brick-contact-shadows',scene,{ssaoRatio:0.5,blurRatio:0.5},[camera]);
     ao.radius=0.35;ao.totalStrength=1.0;ao.samples=8;ao.expensiveBlur=false;
