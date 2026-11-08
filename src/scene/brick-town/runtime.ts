@@ -32,6 +32,12 @@ export type SceneCallbacks = Pick<TownSceneProps,'onHoverPost'|'onResolvePostAnc
   onResolveNewPostAnchors?: (frame: PostNoticeFrame) => void;
 };
 const color=(hex:string)=>Color3.FromHexString(hex);
+// Discover desktop AO while React hydrates, not after scene construction. Its
+// prepass can arrive before the first render rather than invalidating already
+// compiled PBR materials later. Mobile never fetches this optional pipeline.
+const contactShadowModule=typeof window!=='undefined'&&window.innerWidth>=720
+  ? import('@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline.js').catch(()=>undefined)
+  : undefined;
 
 export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:TownSceneProps['posts'],initial:SceneState,callbacks:()=>SceneCallbacks,onFirstFrame?:()=>void) {
   const buildStarted=performance.now();
@@ -42,6 +48,9 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   const maxDpr = mobile ? 1 : 1.25;
   engine.setHardwareScalingLevel(1/Math.min(window.devicePixelRatio,maxDpr));
   const scene=new Scene(engine);
+  // Picking is handled explicitly below, with throttling and gesture detection.
+  scene.skipPointerMovePicking=true;scene.skipPointerDownPicking=true;scene.skipPointerUpPicking=true;
+  scene.blockMaterialDirtyMechanism=true;
   scene.clearColor=Color4.FromHexString('#ffffffff');
   scene.environmentTexture=CubeTexture.CreateFromPrefilteredData('/assets/brick-town/studio.env',scene);
   scene.environmentIntensity=0.75;
@@ -130,18 +139,17 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     highlights=new highlightModule.HighlightLayer('article-floor-highlight',scene,{mainTextureRatio:mobile?0.32:0.5});
     highlights.blurHorizontalSize=mobile?0.35:0.55;highlights.blurVerticalSize=mobile?0.35:0.55;highlights.innerGlow=false;
     if(fxaaModule){fxaa=new fxaaModule.FxaaPostProcess('brick-fxaa',1,camera);fxaa.samples=1;}
-    effectsReady=true;
+    effectsReady=true;canvas.dataset.effectsReady='true';
     lighting();
     update(state);
   };
   let ao:import('@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline.js').SSAO2RenderingPipeline|undefined;
-  // Contact AO is a secondary refinement, so load it in a separate chunk while
-  // the brick assembly overlay is playing instead of blocking the first frame.
-  if(!mobile&&engine.webGLVersion===2) void import('@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline.js').then(({SSAO2RenderingPipeline})=>{
-    if(disposed)return;
-    ao=new SSAO2RenderingPipeline('brick-contact-shadows',scene,{ssaoRatio:0.5,blurRatio:0.5},[camera]);
+  if(!mobile&&engine.webGLVersion===2) void (contactShadowModule??import('@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline.js')).then(module=>{
+    if(disposed||!module)return;
+    ao=new module.SSAO2RenderingPipeline('brick-contact-shadows',scene,{ssaoRatio:0.5,blurRatio:0.5},[camera]);
     ao.radius=0.35;ao.totalStrength=1.0;ao.samples=8;ao.expensiveBlur=false;
-  });
+    canvas.dataset.contactShadows='on';
+  }).catch(()=>{ /* Keep the base scene usable if this optional chunk fails. */ });
   const postMap=new Map(posts.map(p=>[p.id,p]));
   const postSearchText=new Map(posts.map(p=>[p.id,[p.title,p.description,p.category,...p.tags,p.series??'',p.searchText].join(' ').toLowerCase()]));
   const houseByPostId=new Map<string,ReturnType<typeof buildHouse>>();
@@ -303,6 +311,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   const onCancel=(e:PointerEvent)=>finishPointer(e,false);
   canvas.addEventListener('wheel',onWheel,{passive:false});canvas.addEventListener('pointermove',onMove);canvas.addEventListener('pointerleave',onLeave);canvas.addEventListener('pointerdown',onDown);canvas.addEventListener('pointerup',onUp);canvas.addEventListener('pointercancel',onCancel);
   populate();lighting();update(initial);
+  scene.blockMaterialDirtyMechanism=false;
   canvas.dataset.sceneBuildMs=String(Math.round(performance.now()-buildStarted));
   const resize=new ResizeObserver(()=>{fit(true);if(state.hoveredPostId)anchor(state.hoveredPostId);});resize.observe(canvas.parentElement!);
   let lastDiagnostics=0,slowRenderFrames=0,firstFramePublished=false;
@@ -342,7 +351,9 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
       // A render call can finish while shader/texture imports are still pending.
       // Keep the loader until the base town can actually be drawn.
       firstFramePublished=true;
-      onFirstFrame?.();window.setTimeout(()=>{void initVisualEffects();},mobile?350:0);
+      onFirstFrame?.();
+      // Present the complete base scene before attaching secondary pipelines.
+      window.setTimeout(()=>{void initVisualEffects();},mobile?350:0);
     }
     if(ao&&renderCost>55){slowRenderFrames++;if(slowRenderFrames>=4){ao.dispose();ao=undefined;canvas.dataset.adaptiveAo='off';}}else slowRenderFrames=Math.max(0,slowRenderFrames-1);
     if(frames===1||now-lastDiagnostics>500)publishDiagnostics(now);

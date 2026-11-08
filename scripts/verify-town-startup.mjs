@@ -1,5 +1,6 @@
 // Build first. Serves dist/ with gzip to measure cold production loads, not Vite dev.
 // PLAYWRIGHT_CHANNEL=chrome npm run verify:startup
+// PLAYWRIGHT_CHANNEL=chrome npm run verify:desktop-startup
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
@@ -7,6 +8,7 @@ import { extname, resolve, sep } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { chromium } from 'playwright';
 
+const desktop = process.argv.includes('--desktop');
 const root = resolve('dist'), cache = new Map();
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2' };
 const server = createServer(async (request, response) => {
@@ -30,7 +32,7 @@ const base = `http://127.0.0.1:${server.address().port}`;
 let browser;
 try {
   browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || undefined });
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, colorScheme: 'light' });
+  const context = await browser.newContext({ viewport: desktop ? { width: 1440, height: 1000 } : { width: 390, height: 844 }, deviceScaleFactor: desktop ? 1.25 : 1, isMobile: !desktop, hasTouch: !desktop, colorScheme: 'light' });
   const page = await context.newPage(), errors = [], requests = [], fontRequests = [], imageErrors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('response', response => { if (response.status() >= 400) imageErrors.push(response.url()); });
@@ -42,7 +44,7 @@ try {
   await client.send('Network.enable');
   await client.send('Network.setCacheDisabled', { cacheDisabled: true });
   // Repeatable lab conditions, not a prediction of every handset/network.
-  await client.send('Network.emulateNetworkConditions', { offline: false, latency: 80, downloadThroughput: 200000, uploadThroughput: 100000, connectionType: 'cellular4g' });
+  await client.send('Network.emulateNetworkConditions', { offline: false, latency: desktop ? 60 : 80, downloadThroughput: desktop ? 625000 : 200000, uploadThroughput: 100000, connectionType: desktop ? 'wifi' : 'cellular4g' });
   await client.send('Emulation.setCPUThrottlingRate', { rate: 4 });
   await page.addInitScript(() => {
     window.__townStartup = { ready: 0, fontRequest: 0, longTasks: [] };
@@ -74,14 +76,24 @@ try {
   assert(await page.locator('style[data-town-fonts]').evaluate(element => element.textContent.includes('ZCOOL QingKe HuangYou') && element.textContent.includes('IBM Plex Sans SC')));
   const sidebarSources = await page.locator('.brand-image source, .profile-panel source').evaluateAll(elements => elements.map(element => new URL(element.srcset, location.href).href));
   assert.equal(sidebarSources.length, 2);
-  assert(sidebarSources.every(url => !requests.includes(url)), 'hidden mobile artwork downloaded during startup');
-  await page.getByRole('button', { name: '打开侧边栏', exact: true }).click();
-  await page.waitForFunction(() => [...document.querySelectorAll('.brand-image img, .profile-avatar')].every(image => image.complete && image.naturalWidth > 0));
-  assert(sidebarSources.every(url => requests.includes(url)), 'opening the mobile sidebar did not load original artwork');
+  if (desktop) {
+    await page.waitForFunction(() => document.querySelector('.brick-town-host canvas')?.dataset.effectsReady === 'true', null, { timeout: 30000 });
+    const resolution = await page.locator('.brick-town-host canvas').evaluate(canvas => ({ width: canvas.width, height: canvas.height, cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight }));
+    assert(Math.abs(resolution.width - resolution.cssWidth * 1.25) <= 1 && Math.abs(resolution.height - resolution.cssHeight * 1.25) <= 1, 'desktop rendering resolution was degraded');
+    assert.equal(await page.locator('.brick-town-host canvas').getAttribute('data-contact-shadows'), 'on', 'desktop contact shadow pipeline was not initialized');
+    await page.waitForFunction(() => [...document.querySelectorAll('.brand-image img, .profile-avatar')].every(image => image.complete && image.naturalWidth > 0));
+    assert(sidebarSources.every(url => requests.includes(url)), 'desktop artwork was not loaded');
+  } else {
+    assert(!requests.some(url => /ssao2RenderingPipeline/.test(url)), 'mobile fetched desktop-only contact shadows');
+    assert(sidebarSources.every(url => !requests.includes(url)), 'hidden mobile artwork downloaded during startup');
+    await page.getByRole('button', { name: '打开侧边栏', exact: true }).click();
+    await page.waitForFunction(() => [...document.querySelectorAll('.brand-image img, .profile-avatar')].every(image => image.complete && image.naturalWidth > 0));
+    assert(sidebarSources.every(url => requests.includes(url)), 'opening the mobile sidebar did not load original artwork');
+  }
   assert.equal(metrics.canvas.renderer, 'webgl2');
   assert.deepEqual(errors, []);
   assert.deepEqual(imageErrors, []);
-  console.log(JSON.stringify({ message: 'PASS: cold production startup, early runtime, deferred original fonts, single environment fetch, no runtime errors', readyMs: Math.round(metrics.ready), sceneBuildMs: Number(metrics.canvas.sceneBuildMs), worldBuildMs: Number(metrics.canvas.worldBuildMs), bytesBeforeReady: metrics.bytes, longTaskMs: Math.round(metrics.longTasks.reduce((sum, duration) => sum + duration, 0)) }, null, 2));
+  console.log(JSON.stringify({ message: 'PASS: cold production startup, early runtime, deferred original fonts, single environment fetch, no runtime errors', device: desktop ? 'desktop' : 'mobile', readyMs: Math.round(metrics.ready), sceneBuildMs: Number(metrics.canvas.sceneBuildMs), worldBuildMs: Number(metrics.canvas.worldBuildMs), bytesBeforeReady: metrics.bytes, longTaskMs: Math.round(metrics.longTasks.reduce((sum, duration) => sum + duration, 0)) }, null, 2));
   await context.close();
 } finally {
   await browser?.close();
