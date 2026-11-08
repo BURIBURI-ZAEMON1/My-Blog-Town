@@ -47,6 +47,18 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   // render-target cost that a 1.5 DPR cap caused on Retina displays.
   const maxDpr = mobile ? 1 : 1.25;
   engine.setHardwareScalingLevel(1/Math.min(window.devicePixelRatio,maxDpr));
+  let disposed=false;
+  let inView=true,visible=!document.hidden,lastFrame=0,renderBurst=8;
+  let weatherWakeTimer:number|undefined;
+  // Reduced-motion towns are visually static. Wake a short settling burst only
+  // for changes, rather than continuously redrawing the identical GPU frame.
+  function requestDraw() {
+    if(disposed)return;
+    window.clearTimeout(weatherWakeTimer);weatherWakeTimer=undefined;
+    renderBurst=8;
+    if(inView&&visible){canvas.dataset.renderLoop='active';engine.runRenderLoop(render);}
+  }
+  engine.onContextRestoredObservable.add(requestDraw);
   const scene=new Scene(engine);
   // Picking is handled explicitly below, with throttling and gesture detection.
   scene.skipPointerMovePicking=true;scene.skipPointerDownPicking=true;scene.skipPointerUpPicking=true;
@@ -89,7 +101,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
       camera.orthoLeft=-span*aspect/2;camera.orthoRight=span*aspect/2;
     }
     fittedWidth=width;
-    clampCameraTarget();engine.resize();
+    clampCameraTarget();engine.resize();requestDraw();
   };
   fit();
   const hemi=new HemisphericLight('cool-sky',new Vector3(0,1,0),scene);
@@ -121,7 +133,6 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   let glow:import('@babylonjs/core/Layers/glowLayer.js').GlowLayer|undefined;
   let highlights:import('@babylonjs/core/Layers/highlightLayer.js').HighlightLayer|undefined;
   let fxaa:import('@babylonjs/core/PostProcesses/fxaaPostProcess.js').FxaaPostProcess|undefined;
-  let disposed=false;
   let effectsReady=false;
   const initVisualEffects=async()=>{
     if(disposed||effectsReady)return;
@@ -148,7 +159,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     if(disposed||!module)return;
     ao=new module.SSAO2RenderingPipeline('brick-contact-shadows',scene,{ssaoRatio:0.5,blurRatio:0.5},[camera]);
     ao.radius=0.35;ao.totalStrength=1.0;ao.samples=8;ao.expensiveBlur=false;
-    canvas.dataset.contactShadows='on';
+    canvas.dataset.contactShadows='on';requestDraw();
   }).catch(()=>{ /* Keep the base scene usable if this optional chunk fails. */ });
   const postMap=new Map(posts.map(p=>[p.id,p]));
   const postSearchText=new Map(posts.map(p=>[p.id,[p.title,p.description,p.category,...p.tags,p.series??'',p.searchText].join(' ').toLowerCase()]));
@@ -157,7 +168,6 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   let articleMeshes=[...houseMeshes,...seasons.articleMeshes];
   let highlightSignature='';
   let state={...initial};let frames=0;let elapsed=0;
-  let inView=true,visible=!document.hidden,lastFrame=0;
   let weatherSlot=Math.floor(Date.now()/900000),rainy=weatherIsPrecipitating(layout.seed,weatherSlot);
   let citizens:Citizen[]=[],figures:ReturnType<typeof buildMinifig>[]=[];
   function populate() {
@@ -210,6 +220,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
       highlightSignature=nextHighlightSignature;
     }
     if(state.hoveredPostId)anchor(state.hoveredPostId);
+    requestDraw();
   }
   function anchor(id:string){
     const house=houseByPostId.get(id);if(!house)return;
@@ -233,7 +244,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     camera.orthoRight=centerX+(camera.orthoRight!-centerX)*scale;
     camera.orthoTop=centerY+(camera.orthoTop!-centerY)*scale;
     camera.orthoBottom=centerY+(camera.orthoBottom!-centerY)*scale;
-    zoom=clamped;clampCameraTarget();
+    zoom=clamped;clampCameraTarget();requestDraw();
   };
   function pick(event:PointerEvent){
     const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;
@@ -264,7 +275,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
         const perPixel=(camera.orthoRight!-camera.orthoLeft!)/canvas.clientWidth;
         const pan=getDragPanDelta(camera.alpha,camera.beta,dx,dy,perPixel);
         camera.target.x+=pan.x;camera.target.z+=pan.z;
-        clampCameraTarget();canvas.style.cursor='grabbing';
+        clampCameraTarget();requestDraw();canvas.style.cursor='grabbing';
         return;
       }
     }
@@ -357,13 +368,19 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     }
     if(ao&&renderCost>55){slowRenderFrames++;if(slowRenderFrames>=4){ao.dispose();ao=undefined;canvas.dataset.adaptiveAo='off';}}else slowRenderFrames=Math.max(0,slowRenderFrames-1);
     if(frames===1||now-lastDiagnostics>500)publishDiagnostics(now);
+    if(state.reducedMotion&&--renderBurst<=0&&firstFramePublished&&effectsReady&&scene.isReady()&&engine.areAllEffectsReady()){
+      engine.stopRenderLoop(render);canvas.dataset.renderLoop='idle';publishDiagnostics(now);
+      // Static weather still follows the real 15-minute boundary without a
+      // permanent animation loop or polling timer. Interaction cancels this wake.
+      weatherWakeTimer=window.setTimeout(requestDraw,900000-Date.now()%900000+1);
+    }
   }
-  const syncVisibility=()=>{if(inView&&visible){lastFrame=0;engine.runRenderLoop(render);}else engine.stopRenderLoop(render);};
+  const syncVisibility=()=>{if(inView&&visible){lastFrame=0;requestDraw();}else{engine.stopRenderLoop(render);window.clearTimeout(weatherWakeTimer);weatherWakeTimer=undefined;canvas.dataset.renderLoop='paused';}};
   const observer=new IntersectionObserver(([entry])=>{inView=!!entry?.isIntersecting;syncVisibility();});observer.observe(canvas);
   const onVisibility=()=>{visible=!document.hidden;syncVisibility();};document.addEventListener('visibilitychange',onVisibility);
   engine.runRenderLoop(render);
   return {
     update,anchor,
-    dispose(){disposed=true;engine.stopRenderLoop(render);resize.disconnect();observer.disconnect();document.removeEventListener('visibilitychange',onVisibility);canvas.removeEventListener('wheel',onWheel);canvas.removeEventListener('pointermove',onMove);canvas.removeEventListener('pointerleave',onLeave);canvas.removeEventListener('pointerdown',onDown);canvas.removeEventListener('pointerup',onUp);canvas.removeEventListener('pointercancel',onCancel);pointers.clear();pinch=undefined;down=undefined;ao?.dispose();seasons.dispose();weather.dispose();scene.dispose();engine.dispose();},
+    dispose(){disposed=true;window.clearTimeout(weatherWakeTimer);engine.stopRenderLoop(render);resize.disconnect();observer.disconnect();document.removeEventListener('visibilitychange',onVisibility);canvas.removeEventListener('wheel',onWheel);canvas.removeEventListener('pointermove',onMove);canvas.removeEventListener('pointerleave',onLeave);canvas.removeEventListener('pointerdown',onDown);canvas.removeEventListener('pointerup',onUp);canvas.removeEventListener('pointercancel',onCancel);pointers.clear();pinch=undefined;down=undefined;ao?.dispose();seasons.dispose();weather.dispose();scene.dispose();engine.dispose();},
   };
 }

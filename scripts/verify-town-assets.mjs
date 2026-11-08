@@ -25,9 +25,11 @@ const images = header.specular.mipmaps.map((mip) => {
   return bytes.subarray(end + 1 + mip.position, end + 1 + mip.position + mip.length).toString('base64');
 });
 assert.equal(end + 1 + offset, bytes.length, 'missing/trailing environment bytes');
-const logo = readFileSync('public/assets/profile/logo.webp');
-assert(logo.length <= expected.logo.maxBytes, 'logo transfer size regressed');
-images.push(logo.toString('base64'));
+const logo = expected.logo ? readFileSync('public/assets/profile/logo.webp') : undefined;
+if (logo) {
+  assert(logo.length <= expected.logo.maxBytes, 'logo transfer size regressed');
+  images.push(logo.toString('base64'));
+}
 const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || undefined });
 try {
   const page = await browser.newPage();
@@ -59,6 +61,6 @@ try {
     assert.equal(createHash('sha256').update(Buffer.from(actual.rgba, 'base64')).digest('hex'), digest, 'decoded GPU pixels differ from original asset');
   };
   expected.environment.images.forEach((image, index) => check(decoded[index], image.size, image.size, image.rgbaSha256));
-  check(decoded.at(-1), expected.logo.width, expected.logo.height, expected.logo.rgbaSha256);
-  console.log(`PASS: all 48 environment mip/faces and logo preserve exact original RGBA pixels; lighting/LOD metadata unchanged; ENV ${bytes.length} bytes, logo ${logo.length} bytes.`);
+  if (expected.logo) check(decoded.at(-1), expected.logo.width, expected.logo.height, expected.logo.rgbaSha256);
+  console.log(`PASS: all 48 environment mip/faces${logo ? " and logo" : ""} preserve exact original RGBA pixels; lighting/LOD metadata unchanged; ENV ${bytes.length} bytes${logo ? `, logo ${logo.length} bytes` : ""}.`);
 } finally { await browser.close(); }
