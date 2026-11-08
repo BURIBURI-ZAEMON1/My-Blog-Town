@@ -57,13 +57,13 @@ export const siteConfig: SiteConfig = {
 };
 
 export const friendLinks: FriendLink[] = [
-  { id: 'wjs', nickname: '马克朱佩奇', avatar: '/assets/friends/wjs.png', url: 'https://wjsblog.xyz' },
-  { id: 'zheyi', nickname: '折乙', avatar: '/assets/friends/zheyi.jpg', url: 'https://zheyi.in' },
-  { id: 'baitang', nickname: '白糖洒一地', avatar: '/assets/friends/baitang.jpg', url: 'https://blog.sugarmgp.cn' },
-  { id: 'claran', nickname: 'Claran', avatar: '/assets/friends/Claran.png', url: 'https://www.claran-blog.work' },
-  { id: 'qingniao', nickname: '青鸟', avatar: '/assets/friends/qingniao.jpg', url: 'https://blog.bluebird.icu' },
-  { id: 'ximo', nickname: '惜寞', avatar: '/assets/friends/ximo.jpg', url: 'https://lonesome.cn' },
-  { id: 'diamond-boy', nickname: 'Diamond boy', avatar: '/assets/friends/Diamond_boy.png', url: 'https://blog.stargazer-luciddream.top' },
-  { id: 'true', nickname: '十且八', avatar: '/assets/friends/true.jpg', url: 'https://sqbtt.cn' },
-  { id: 'H2SO4', nickname: 'H2SO4', avatar: '/assets/friends/H2SO4.jpg', url: 'https://h2so4.site' },
+  { id: 'wjs', nickname: '马克朱佩奇', avatar: '/assets/friends/wjs.jpeg', url: 'https://wjsblog.xyz' },
+  { id: 'Zayee', nickname: '折乙', avatar: '/assets/friends/Zayee.jpeg', url: 'https://zheyi.in' },
+  { id: 'sugerMGP', nickname: '白糖洒一地', avatar: '/assets/friends/sugerMGP.jpeg', url: 'https://blog.sugarmgp.cn' },
+  { id: 'Claran', nickname: 'Claran', avatar: '/assets/friends/Claran.jpeg', url: 'https://www.claran-blog.work' },
+  { id: 'bird', nickname: '青鸟', avatar: '/assets/friends/bird.jpeg', url: 'https://blog.bluebird.icu' },
+  { id: 'ximo', nickname: '惜寞', avatar: '/assets/friends/ximo.jpeg', url: 'https://lonesome.cn' },
+  { id: 'diamond-boy', nickname: 'Diamond boy', avatar: '/assets/friends/Diamond_boy.jpeg', url: 'https://blog.stargazer-luciddream.top' },
+  { id: 'true', nickname: '十且八', avatar: '/assets/friends/true.jpeg', url: 'https://sqbtt.cn' },
+  { id: 'H2SO4', nickname: 'H2SO4', avatar: '/assets/friends/H2SO4.jpeg', url: 'https://h2so4.site' },
 ];
