@@ -63,6 +63,14 @@ try {
     await page.reload({ waitUntil: 'domcontentloaded' });
     assert.equal(await page.locator('.site-entry').isVisible(), false);
     await page.waitForSelector('.brick-town-loader[data-phase="steady"]');
+    const dots = page.locator('.brick-loader-mark i');
+    assert.equal(await dots.count(), 3, 'local loader should contain three dots');
+    const styles = await dots.evaluateAll(elements => elements.map(el => {
+      const style = getComputedStyle(el);
+      return { animation: style.animationName, delay: style.animationDelay, color: style.backgroundColor, radius: style.borderRadius };
+    }));
+    assert(styles.every(style => style.animation === 'town-loader-float' && style.color === 'rgb(179, 179, 179)' && style.radius === '50%'));
+    assert.equal(new Set(styles.map(style => style.delay)).size, 3, 'dots should float in sequence');
     await context.close();
   }
   const reduced = await browser.newContext({ reducedMotion: 'reduce', viewport: { width: 390, height: 844 } });
@@ -85,11 +93,17 @@ try {
     window.visibleLoader = false;
     new MutationObserver(() => {
       const loader = document.querySelector('.brick-town-loader');
-      if (loader && loader.dataset.ready !== 'true' && loader.dataset.phase !== 'quiet') window.visibleLoader = true;
+      if (loader && loader.dataset.phase !== 'quiet') window.visibleLoader = true;
+      const host = document.querySelector('.brick-town-host');
+      if (host?.dataset.ready === 'true' && window.firstFrameReveal === undefined) {
+        const style = getComputedStyle(host.querySelector('canvas'));
+        window.firstFrameReveal = { opacity: style.opacity, transition: style.transitionDuration, loader: !!loader };
+      }
     }).observe(document, { childList: true, subtree: true, attributes: true });
   });
   await quickPage.goto(base, { waitUntil: 'domcontentloaded' });
   await quickPage.waitForFunction(() => document.querySelector('.brick-town-host')?.dataset.ready === 'true');
+  assert.deepEqual(await quickPage.evaluate(() => window.firstFrameReveal), { opacity: '1', transition: '0s', loader: false }, 'first frame waited for a canvas or loader transition');
   await quickPage.locator('.brick-town-loader').waitFor({ state: 'detached' });
   assert.equal(await quickPage.evaluate(() => window.visibleLoader), false, 'brief canvas load flashed an indicator');
   await quick.close();

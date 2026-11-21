@@ -352,25 +352,22 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   transition: opacity 220ms ease;
   contain: strict;
 }
-.brick-town-loader[data-phase="quiet"], .brick-town-loader[data-ready="true"] { opacity: 0; }
+.brick-town-loader[data-phase="quiet"] { opacity: 0; }
 .brick-loader-content { display: grid; justify-items: center; gap: 18px; }
-.brick-loader-mark { position: relative; width: 30px; height: 34px; }
+.brick-loader-mark { display: flex; align-items: center; gap: 6px; height: 14px; color: #b3b3b3; }
 .brick-loader-mark i {
-  position: absolute;
-  inset: 0 7px 0 0;
-  border: 1px solid currentColor;
-  border-bottom: 0;
-  opacity: .35;
-  animation: town-loader-breathe 1800ms ease-in-out infinite;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: town-loader-float 1000ms ease-in-out infinite;
 }
-.brick-loader-mark i:nth-child(2) { inset: 5px 3px 0 5px; animation-delay: 240ms; }
-.brick-loader-mark i:nth-child(3) { inset: 10px 0 0 10px; animation-delay: 480ms; }
+.brick-loader-mark i:nth-child(2) { animation-delay: 140ms; }
+.brick-loader-mark i:nth-child(3) { animation-delay: 280ms; }
 .brick-loader-content > span { font-size: 11px; letter-spacing: .06em; opacity: 0; transition: opacity 300ms ease; }
 .brick-town-loader[data-phase="steady"] .brick-loader-content > span,
 .brick-town-loader[data-phase="patient"] .brick-loader-content > span { opacity: 1; }
-.brick-town-host canvas { opacity: 0; transition: opacity 280ms ease; }
-.brick-town-host[data-ready="true"] canvas { opacity: 1; }
-@keyframes town-loader-breathe { 0%, 100% { opacity: .22; } 50% { opacity: .65; } }
+@keyframes town-loader-float { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-4px); } }
 .brick-town-loader[data-reduced-motion="true"] .brick-loader-mark i { animation: none; }
 
 /* One continuous passage, from the waiting doors to the final aperture. */

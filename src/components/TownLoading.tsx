@@ -3,29 +3,22 @@ import { getTownLoadingProfile, TOWN_LOADING_THRESHOLDS } from '../scene/brick-t
 
 export default function TownLoading({ ready = false, reducedMotion = false }: { ready?: boolean; reducedMotion?: boolean }) {
   const [elapsed, setElapsed] = useState(0);
-  const [present, setPresent] = useState(!ready);
 
   useEffect(() => {
-    if (ready) {
-      const exit = window.setTimeout(() => setPresent(false), 220);
-      return () => window.clearTimeout(exit);
-    }
-    setPresent(true);
+    if (ready) return;
     setElapsed(0);
     const timers = Object.values(TOWN_LOADING_THRESHOLDS)
       .map((delay) => window.setTimeout(() => setElapsed(delay), delay));
     return () => timers.forEach(window.clearTimeout);
   }, [ready]);
 
-  if (!present) return null;
+  if (ready) return null;
   return <div
     className="brick-town-loader"
     data-phase={getTownLoadingProfile(elapsed).phase}
-    data-ready={ready}
     data-reduced-motion={reducedMotion}
     role="status"
     aria-label="正在载入小镇"
-    aria-hidden={ready}
   >
     <div className="brick-loader-content">
       <div className="brick-loader-mark" aria-hidden="true"><i /><i /><i /></div>
