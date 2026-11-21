@@ -87,7 +87,7 @@ try {
   await quickPage.addInitScript(() => sessionStorage.setItem('town:entered', 'true'));
   await quickPage.route(/(?:\/runtime\.[^/]+\.js|\/src\/scene\/brick-town\/runtime\.ts)(?:\?|$)/, route => route.fulfill({
     contentType: 'text/javascript',
-    body: 'export function mountBrickTown(canvas, layout, posts, initial, callbacks, ready) { const timer = setTimeout(ready, 40); return { update() {}, dispose() { clearTimeout(timer); } }; } export const t = { mountBrickTown };',
+    body: 'export function mountBrickTown(canvas, layout, posts, initial, callbacks, ready) { const timer = setTimeout(ready, 40); return { update() {}, focusPost() { return false; }, cancelFocus() {}, dispose() { clearTimeout(timer); } }; } export const t = { mountBrickTown };',
   }));
   await quickPage.addInitScript(() => {
     window.visibleLoader = false;

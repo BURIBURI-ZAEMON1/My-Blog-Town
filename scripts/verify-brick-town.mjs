@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
-import { NullEngine, Scene } from '@babylonjs/core';
+import { NullEngine, Scene, Vector3 } from '@babylonjs/core';
 const require=createRequire(import.meta.url),cache=new Map();
 function load(path){
   const absolute=resolve(path);if(cache.has(absolute))return cache.get(absolute).exports;
@@ -21,7 +21,28 @@ assert.deepEqual(BOARD,townBoard,'Babylon world and mini-map use different coord
 assert.equal(TOWN_MAP_MIRROR_X,true,'mini-map should use the corrected left-right orientation');
 const runtimeSource=readFileSync('src/scene/brick-town/runtime.ts','utf8');
 assert(runtimeSource.includes("@babylonjs/core/Culling/ray.js"),'tree-shaken runtime did not register Babylon ray picking');
-const {createRainField,getCameraPanBounds,clampToPanBounds,getDragPanDelta}=load('src/scene/brick-town/view.ts');
+const {createRainField,getCameraPanBounds,clampToPanBounds,getDragPanDelta,getArticleFocusPose,ARTICLE_FOCUS_MS,ARTICLE_FOCUS_ZOOM}=load('src/scene/brick-town/view.ts');
+for(const distance of [0,.5,60]){
+  const from={x:0,y:.2,z:0,zoom:1.9},to={x:distance,y:1.4,z:0};
+  assert.deepEqual(getArticleFocusPose(from,to,0),from,'focus should begin at the current camera pose');
+  const end=getArticleFocusPose(from,to,ARTICLE_FOCUS_MS);
+  assert(Math.abs(end.x-to.x)<1e-10&&Math.abs(end.y-to.y)<1e-10&&Math.abs(end.z-to.z)<1e-10,'focus did not arrive at the fixed deadline');
+  assert.equal(end.zoom,ARTICLE_FOCUS_ZOOM);
+  assert.equal(getArticleFocusPose({...from,zoom:2.6},to,ARTICLE_FOCUS_MS).zoom,2.6,'focus zoomed out of a closer view');
+  const middle=getArticleFocusPose(from,to,ARTICLE_FOCUS_MS/2);
+  assert.equal(middle.z,0,'focus introduced a sideways detour');
+  assert(Object.values(middle).every(Number.isFinite),'coincident focus produced invalid coordinates');
+}
+const closePose={x:0,y:.2,z:0,zoom:2.6};
+const nearLift=getArticleFocusPose(closePose,{x:12,y:1,z:0},ARTICLE_FOCUS_MS*.32).zoom;
+const farLift=getArticleFocusPose(closePose,{x:50,y:1,z:0},ARTICLE_FOCUS_MS*.32).zoom;
+assert(farLift<nearLift&&nearLift<closePose.zoom,'distant close-view flights should rise further before approaching');
+assert.equal(getArticleFocusPose(closePose,{x:2,y:1,z:0},ARTICLE_FOCUS_MS*.32).zoom,2.6,'nearby buildings caused an unnecessary rise');
+assert(getArticleFocusPose({...closePose,zoom:1},{x:50,y:1,z:0},ARTICLE_FOCUS_MS*.32).zoom>=1,'already-high camera rose further');
+const highMiddle=getArticleFocusPose({...closePose,zoom:1},{x:50,y:1,z:0},ARTICLE_FOCUS_MS*.5);
+assert(1/highMiddle.zoom>(1+1/ARTICLE_FOCUS_ZOOM)/2,'high-to-low descent lost its shallow diving arc');
+const vectorTarget=new Vector3(3,2,4);
+assert.deepEqual(getArticleFocusPose(closePose,vectorTarget,ARTICLE_FOCUS_MS),{x:3,y:2,z:4,zoom:2.6},'Babylon vector target was not preserved at arrival');
 const {getTownLoadingProfile,TOWN_LOADING_THRESHOLDS}=load('src/scene/brick-town/loading.ts');
 const engine=new NullEngine(),scene=new Scene(engine);
 let rainState=123456789;
