@@ -40,7 +40,7 @@ export default function TownScene(props: TownSceneLifecycleProps) {
     return () => { cancelled = true; runtimeRef.current?.dispose(); runtimeRef.current = undefined; };
   }, [fallback, props.posts]);
   useEffect(() => { runtimeRef.current?.update(props); }, [props.season, props.colorMode, props.reducedMotion, props.hoveredPostId, props.activePostId, props.newPostIds, props.guidePostId, props.query, props.category, props.tag, ready]);
-  return <div className="town-canvas-host brick-town-host" data-testid="town-canvas">
+  return <div className="town-canvas-host brick-town-host" data-testid="town-canvas" data-ready={ready}>
     <canvas ref={canvasRef} aria-label={`${SEASON_PROFILES[props.season].label}季积木小镇：桌面使用鼠标滚轮缩放，手机双指捏合缩放；点击建筑阅读文章；拖动移动地图`} />
     {ready && noticeFrame && <TownPostNotices posts={props.posts} newPostIds={props.newPostIds} frame={noticeFrame} reducedMotion={props.reducedMotion} onOpen={(id) => { latest.current.onTownExplored?.(); latest.current.onSelectPost(id); }} />}
     {error && <div className="brick-loading" role="status">当前设备无法绘制小镇，请通过顶部档案入口阅读。</div>}

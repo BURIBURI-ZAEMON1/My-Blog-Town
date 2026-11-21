@@ -23,6 +23,7 @@
     "verify:mobile-ui": "node scripts/verify-town-mobile-ui.mjs",
     "verify:mobile-view": "node scripts/verify-mobile-view-stability.mjs",
     "verify:startup": "node scripts/verify-town-startup.mjs",
+    "verify:loading": "node scripts/verify-loading.mjs",
     "verify:proximity": "node scripts/verify-town-proximity.mjs",
     "verify:giscus-ui": "node scripts/verify-giscus-ui.mjs",
     "verify:layout": "node scripts/verify-town-layout-stability.mjs",

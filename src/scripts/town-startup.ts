@@ -1,4 +1,7 @@
 import { requestTownFonts } from '../lib/town-fonts';
+import { startSiteEntry } from './site-entry';
+
+startSiteEntry();
 
 // Discover the town runtime before React hydration; TownScene reuses this module.
 const startsInTown = document.documentElement.dataset.initialSurface === 'town';

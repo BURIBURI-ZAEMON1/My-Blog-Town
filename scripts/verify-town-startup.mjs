@@ -70,7 +70,8 @@ try {
   assert(fontRequests.every(start => start >= metrics.timeOrigin + metrics.fontRequest - 20), 'font downloads started before the deferred request');
   assert.equal(metrics.fontsBeforeReady, 0, 'font downloads competed with the base town');
   assert.equal(metrics.environmentRequests, 1, 'environment preload was downloaded again');
-  assert.equal(await page.locator('.brick-town-loader').count(), 0, 'loader remained after the town was ready');
+  await page.locator('.brick-town-loader').waitFor({ state: 'detached' });
+  await page.locator('.site-entry').waitFor({ state: 'hidden' });
   assert(metrics.ready < 12000, `cold startup exceeded the 12s regression budget: ${Math.round(metrics.ready)}ms`);
   // The deferred typography must still be applied, with the original families.
   await page.waitForSelector('style[data-town-fonts]', { state: 'attached', timeout: 30000 });
