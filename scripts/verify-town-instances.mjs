@@ -1,12 +1,20 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname, resolve } from 'node:path';
 import ts from 'typescript';
 import { NullEngine, Scene, Mesh, Matrix, Vector3 } from '@babylonjs/core';
-const require = createRequire(import.meta.url), module = { exports: {} };
-const output = ts.transpileModule(readFileSync('src/scene/brick-town/kit.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-new Function('require', 'module', 'exports', output)(require, module, module.exports);
-const { ThinBrickKit } = module.exports;
+const require = createRequire(import.meta.url), cache = new Map();
+function load(path) {
+  const absolute = resolve(path);
+  if (cache.has(absolute)) return cache.get(absolute).exports;
+  const module = { exports: {} }; cache.set(absolute, module);
+  const output = ts.transpileModule(readFileSync(absolute, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const localRequire = id => id.startsWith('.') ? load(resolve(dirname(absolute), `${id}.ts`)) : require(id);
+  new Function('require', 'module', 'exports', output)(localRequire, module, module.exports);
+  return module.exports;
+}
+const { ThinBrickKit, BrickKit } = load('src/scene/brick-town/kit.ts');
 const engine = new NullEngine(), scene = new Scene(engine);
 const originalRefresh = Mesh.prototype.thinInstanceRefreshBoundingInfo;
 let refreshes = 0;
@@ -28,5 +36,12 @@ try {
     }
   }
   assert.equal(refreshes, 1, 'static instance bounds were recalculated after buffer upload already calculated them');
+  const grouped = new BrickKit(scene);
+  grouped.anchor = { x: 3, z: 4 };
+  grouped.box(2,0,3,1,1,1,'#547a3c');
+  grouped.box(4,1,5,1,1,1,'#547a3c');
+  const [tree] = grouped.flush('whole-tree');
+  const anchors = tree.getVerticesData('edgeAnchor');
+  for (let i=0;i<anchors.length;i+=2) assert.deepEqual(anchors.slice(i,i+2), [3,4], 'one tree was split into independent reveal pieces');
   console.log('PASS: exact instance transforms/bounds, one bounds calculation, unchanged geometry.');
 } finally { Mesh.prototype.thinInstanceRefreshBoundingInfo = originalRefresh; scene.dispose(); engine.dispose(); }

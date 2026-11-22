@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
-import { ArcRotateCamera, Camera, NullEngine, Scene, Vector3 } from '@babylonjs/core';
+import { ArcRotateCamera, Camera, NullEngine, Scene, Vector3, Matrix } from '@babylonjs/core';
 
 const require = createRequire(import.meta.url), cache = new Map();
 function load(path) {
@@ -67,6 +67,7 @@ for (const [width, height] of [[320, 500], [390, 600], [1100, 760]]) {
 const { createTownLayout } = load('src/data/town-layout.ts');
 const { buildHouse } = load('src/scene/brick-town/buildings.ts');
 const { createPostNoticeProjector } = load('src/scene/brick-town/post-notices.ts');
+const { townEdgeState } = load('src/scene/brick-town/edge-reveal.ts');
 const engine = new NullEngine(), scene = new Scene(engine);
 const camera = new ArcRotateCamera('notice-test', Math.PI * .68, .96, 36, new Vector3(0, .2, 0), scene);
 camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
@@ -91,6 +92,13 @@ assert.equal(projector.project(ids, undefined, 1000, 750), undefined, 'camera ne
 const resized = projector.project(ids, undefined, 500, 375);
 for (let i = 0; i < resized.anchors.length; i++) assert(Math.abs(resized.anchors[i].x * 2 - panned.anchors[i].x) < .02, 'render DPI leaked into CSS coordinates');
 assert.equal(projector.project([], undefined, 500, 375).anchors.length, 0, 'read posts retain anchors');
+const one=houses.find(house=>house.ids.includes('one'));
+camera.target.copyFrom(one.root.position);
+camera.target.x+=Math.sin(camera.alpha)*19.8;camera.target.z-=Math.cos(camera.alpha)*19.8;
+scene.render();townEdgeState(scene).field.retarget(scene.getTransformMatrix().m,0,true,true,true);
+assert.equal(projector.project(['one'],undefined,500,375).anchors.length,0,'hidden building retained a floating notice');
+townEdgeState(scene).field.retarget(Matrix.Scaling(.001,.001,.001).m,0,false,true);
+assert.equal(projector.project(['one'],undefined,500,375).anchors.length,1,'revealed building notice stayed in the stale cache');
 camera.target.set(1000, 0, 1000); scene.render();
 assert.equal(projector.project(ids, undefined, 500, 375).anchors.length, 0, 'offscreen buildings retain floating labels');
 scene.dispose(); engine.dispose();
