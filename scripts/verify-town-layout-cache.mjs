@@ -8,9 +8,13 @@ import ts from 'typescript';
 const require = createRequire(import.meta.url);
 const source = readFileSync(process.env.TOWN_LAYOUT_SOURCE ?? 'src/data/town-layout.ts', 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const outline = { exports: {} };
+const outlineCode = ts.transpileModule(readFileSync('src/data/town-outline.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+new Function('require', 'module', 'exports', outlineCode)(require, outline, outline.exports);
+const localRequire = id => id === './town-outline' ? outline.exports : require(id);
 const fresh = () => {
   const module = { exports: {} };
-  new Function('require', 'module', 'exports', compiled)(require, module, module.exports);
+  new Function('require', 'module', 'exports', compiled)(localRequire, module, module.exports);
   return module.exports.createTownLayout;
 };
 const createTownLayout = fresh();
