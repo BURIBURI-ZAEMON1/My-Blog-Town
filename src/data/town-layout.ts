@@ -111,7 +111,7 @@ const createTownHamlet = (friends: { id: string }[]): TownHamlet | undefined => 
 
 export const townFeatures: TownFeature[] = [{
   id: 'about', kind: 'about', x: 0, z: 0, width: 2.24, depth: 2,
-  title: '关于', summary: '关于黑蚊子的门，以及这座积木小镇。', href: '/about/',
+  title: '关于', summary: '关于作者，以及这座积木小镇。', href: '/about/',
 }];
 
 export interface TownLayout {

@@ -64,6 +64,28 @@ try {
     const unpack = ([type, value]) => type === 1 ? value.map(unpack) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, unpack(entry)])) : value;
     return unpack(JSON.parse(el.getAttribute('props')).layout);
   });
+  const profile = page.locator('.profile-panel');
+  const nickname = await profile.locator('h2').innerText();
+  for (const target of [profile.locator('h2'), profile.locator('.profile-headline'), profile.locator('.panel-eyebrow')]) {
+    await target.hover();
+    assert.equal(await page.locator('.town-place-tooltip').count(), 0, 'profile text highlighted the windmill');
+  }
+  const avatar = profile.locator('.profile-avatar-link');
+  const avatarBox = await avatar.boundingBox(), imageBox = await avatar.locator('img').boundingBox();
+  assert.equal(avatarBox.width, imageBox.width); assert.equal(avatarBox.height, imageBox.height);
+  await avatar.hover();
+  await page.locator('.town-place-tooltip strong').filter({ hasText: '关于' }).waitFor();
+  await profile.locator('h2').hover();
+  assert.equal(await page.locator('.town-place-tooltip').count(), 0, 'avatar hover did not clear outside its frame');
+  await observe(page); await avatar.click();
+  await page.waitForURL('**/about/'); assertArrival(await flightResult(page), 'about');
+  assert.equal(await page.locator('.about-portrait > span').innerText(), nickname);
+  console.log('PASS: avatar-only hover, matching image hit area, camera flight on click, and nickname badge');
+  await page.locator('.desktop-top-links a[href="/posts/"]').click();
+  await avatar.focus(); await page.keyboard.press('Enter');
+  await page.waitForURL('**/about/');
+  console.log('PASS: keyboard avatar navigation from archive');
+  await page.locator('.desktop-top-links a[href="/"]').click(); await ready(page);
   await observe(page);
   await page.locator('.desktop-top-links a[href="/about/"]').click();
   assert((await flightResult(page)).samples.some(sample => +sample.focusProgress < 1), 'About link skipped the camera');
@@ -166,7 +188,7 @@ try {
   const mobileNav = phone.locator('.mobile-sidebar-nav .primary-nav');
   assert.deepEqual(await mobileNav.locator('a span').allTextContents(), ['小镇', '档案', '关于']);
   assert.equal(await mobileNav.locator('.nav-count').count(), 0);
-  await phone.locator('.mobile-sidebar-nav a[href="/about/"]').click();
+  await phone.locator('.profile-avatar-link').click();
   await phone.waitForURL('**/about/');
   assert.equal(await phone.locator('canvas').count(), 0, 'mobile About needlessly loaded a camera flight');
   assert(!(await phone.locator('.desktop-top-links').isVisible()));
@@ -174,7 +196,7 @@ try {
   assert(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await phone.waitForTimeout(300);
   await phone.screenshot({ path: '/tmp/about-fixed-mobile.png' });
-  console.log('PASS: mobile sidebar has 小镇/档案/关于 without counts; About opens directly with no extra header row or overflow');
+  console.log('PASS: mobile avatar opens About directly; sidebar has 小镇/档案/关于 without counts and no extra header row or overflow');
 
   await mobile.route(`${friendUrl}/**`, route => route.fulfill({ contentType: 'text/html', body: '<h1>Mobile friend reached</h1>' }));
   await phone.getByRole('button', { name: '打开侧边栏', exact: true }).click();

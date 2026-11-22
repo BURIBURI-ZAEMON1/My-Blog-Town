@@ -26,16 +26,17 @@ const assertHamletClear = layout => {
   }
 };
 const { friendLinks, siteConfig } = load('src/config/site.ts');
+const layoutFriends = friendLinks.length ? friendLinks.slice(0, 9) : Array.from({ length: 9 }, (_, i) => ({ id: `test-friend-${i}` }));
 const { buildFeature, buildFriendHut } = load('src/scene/brick-town/features.ts');
 const { createSiteStats } = load('src/lib/site-stats.ts');
 const posts = Array.from({ length: 120 }, (_, index) => ({ id: `p${index}`, date: '2026-01-01' }));
 for (const seed of [siteConfig.townSeed, 'town-blog-framework-v1']) {
   const original = createTownLayout(seed, posts);
-  const layout = createTownLayout(seed, posts, friendLinks);
+  const layout = createTownLayout(seed, posts, layoutFriends);
   assert.equal(layout.plots.length, original.plots.length, 'hamlet lost articles');
   assert(Math.hypot(layout.hamlet.center.x, layout.hamlet.center.z) > 22 && Math.hypot(layout.hamlet.center.x, layout.hamlet.center.z) < 30, 'hamlet must sit beyond the article core');
   assertHamletClear(layout);
-  assert.equal(layout.hamlet.huts.length, friendLinks.length);
+  assert.equal(layout.hamlet.huts.length, layoutFriends.length);
   assert.equal(createTownLayout(seed, posts, []).hamlet, undefined);
   for (const hut of layout.hamlet.huts) {
     assert(Math.abs(Math.hypot(hut.x - layout.hamlet.center.x, hut.z - layout.hamlet.center.z) - layout.hamlet.radius) < .001, 'huts do not form a ring');
@@ -43,11 +44,11 @@ for (const seed of [siteConfig.townSeed, 'town-blog-framework-v1']) {
     for (const plot of layout.plots) assert(Math.abs(hut.x - plot.x) >= (plot.width + 2.6) / 2 || Math.abs(hut.z - plot.z) >= (plot.depth + 2.6) / 2, 'hut overlaps an article');
     for (const other of layout.hamlet.huts) if (hut !== other) assert(Math.hypot(hut.x - other.x, hut.z - other.z) >= 2.6, 'huts overlap');
   }
-  const moreFriends = [...friendLinks, ...Array.from({ length: 18 }, (_, i) => ({ id: `extra-friend-${i}` }))];
+  const moreFriends = [...layoutFriends, ...Array.from({ length: 18 }, (_, i) => ({ id: `extra-friend-${i}` }))];
   const expanded = createTownLayout(seed, posts, moreFriends);
   assertHamletClear(expanded);
   assert.equal(expanded.hamlet.huts.length, moreFriends.length, 'one hut must be generated for each real friend');
-  assert.deepEqual(expanded.hamlet.huts.slice(0, friendLinks.length), layout.hamlet.huts, 'adding friends moved their existing homes');
+  assert.deepEqual(expanded.hamlet.huts.slice(0, layoutFriends.length), layout.hamlet.huts, 'adding friends moved their existing homes');
   for (const hut of expanded.hamlet.huts) {
     for (const other of expanded.hamlet.huts) if (hut !== other) assert(Math.hypot(hut.x-other.x, hut.z-other.z) >= 2.6, 'expanded huts overlap');
     for (const plot of expanded.reservedPlots) assert(Math.abs(hut.x-plot.x) >= (plot.width+2.6)/2 || Math.abs(hut.z-plot.z) >= (plot.depth+2.6)/2, 'expanded hut overlaps an article lot');
@@ -61,11 +62,11 @@ for (const seed of [siteConfig.townSeed, 'town-blog-framework-v1']) {
     assert.equal(stress.plots.length, posts.length);
   }
   console.log(`Hamlet capacity: ${capacity}; full footprints and rendered access road clear at 1, 9, 17, 18, 27 and ${capacity} friends`);
-  const grown = createTownLayout(seed, [...posts, { id: 'newest', date: '2026-11-22' }], friendLinks);
+  const grown = createTownLayout(seed, [...posts, { id: 'newest', date: '2026-11-22' }], layoutFriends);
   for (const plot of layout.plots) assert.deepEqual(grown.plots.find(next => next.postId === plot.postId), plot, 'growth moved an article');
 }
 const engine = new NullEngine(), scene = new Scene(engine);
-const layout = createTownLayout(siteConfig.townSeed, [], friendLinks);
+const layout = createTownLayout(siteConfig.townSeed, [], layoutFriends);
 for (const model of [buildFeature(scene, layout.features[0]), buildFriendHut(scene, layout.hamlet.huts[0])]) {
   assert(model.meshes.length > 0);
   assert(model.meshes.every(mesh => mesh.isPickable && !mesh.metadata.postId), 'landmarks masquerade as articles');
@@ -76,43 +77,45 @@ scene.dispose(); engine.dispose();
 assert.equal(createSiteStats([], new Date('2026-11-22')).days, undefined);
 assert.equal(createSiteStats([{ date: '2026-11-20', category: 'a', tags: ['x'], wordCount: 120 }], new Date('2026-11-22')).days, 3);
 
-const handler = load('api/views.ts').default;
-const savedFetch = globalThis.fetch;
-const savedEnv = { ...process.env };
-let commands = [];
-globalThis.fetch = async (_url, options) => {
-  const command = JSON.parse(options.body); commands.push(command);
-  return { ok: true, json: async () => ({ result: command[0] === 'EVAL' ? [12, 3, 2] : command[0] === 'GET' ? 12 : 3 }) };
+const { recordView } = load('src/lib/views.ts');
+const savedWindow = globalThis.window, savedDocument = globalThis.document;
+let scripts = [], timers = new Map(), timerId = 0;
+globalThis.window = {
+  location: { origin: 'http://localhost:4325', pathname: '/about/' },
+  setTimeout(fn, delay) { timers.set(++timerId, { fn, delay }); return timerId; },
+  clearTimeout(id) { timers.delete(id); },
 };
-async function request(overrides = {}) {
-  let status, body;
-  commands = [];
-  const response = { setHeader() {}, status(value) { status = value; return this; }, json(value) { body = value; } };
-  await handler({ method: 'POST', headers: { host: new URL(siteConfig.siteUrl).host, 'x-forwarded-for': '192.0.2.1', 'user-agent': 'test' }, query: {}, body: { path: '/posts/example/' }, ...overrides }, response);
-  return { status, body };
-}
+globalThis.document = {
+  createElement() { return { remove() { this.removed = true; } }; },
+  head: { appendChild(script) { scripts.push(script); } },
+};
+const respond = (script, payload) => window[new URL(script.src).searchParams.get('jsonpCallback')](payload);
 try {
-  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
-  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-  delete process.env.VERCEL_ENV;
-  assert.equal((await request()).body.views, 2);
-  assert.equal(commands[0][0], 'EVAL');
-  assert(!JSON.stringify(commands).includes('192.0.2.1'), 'raw IP persisted');
-  for (const path of ['https://evil.test', '//evil', '/posts/example/?q=1', '/unexpected/', null]) assert.equal((await request({ body: { path } })).status, 400);
-  for (const headers of [{ host: 'preview.vercel.app' }, { host: new URL(siteConfig.siteUrl).host, origin: 'https://preview.vercel.app' }]) {
-    assert.equal((await request({ headers })).body.enabled, false);
-    assert.equal(commands.length, 0, 'preview wrote to storage');
+  assert.equal(await recordView('/about/'), undefined);
+  assert.equal(scripts.length, 0, 'local preview contacted the external counter');
+  window.location.origin = new URL(siteConfig.siteUrl).origin;
+  assert.equal(await recordView('/posts/'), undefined, 'stale route was counted');
+  const pending = recordView('/about/');
+  const script = scripts.at(-1);
+  assert.equal(new URL(script.src).origin, 'https://busuanzi.ibruce.info');
+  assert.equal(script.referrerPolicy, 'no-referrer-when-downgrade', 'article referrer lost its path');
+  respond(script, { page_pv: 12, site_pv: 1234, site_uv: 234 });
+  assert.deepEqual(await pending, { views: 12, totals: { pageviews: 1234, visitors: 234 } });
+  assert(script.removed, 'completed counter script leaked into the document');
+  for (const payload of [null, {}, { page_pv: -1, site_pv: 2, site_uv: 1 }, { page_pv: '1', site_pv: 2, site_uv: 1 }]) {
+    const invalid = recordView('/about/'); respond(scripts.at(-1), payload);
+    assert.equal(await invalid, undefined, 'invalid external counts were accepted');
   }
-  process.env.VERCEL_ENV = 'preview';
-  assert.equal((await request()).body.enabled, false);
-  delete process.env.VERCEL_ENV;
-  globalThis.fetch = async () => ({ ok: true, json: async () => ({ error: 'Redis command failed' }) });
-  assert.equal((await request()).status, 503);
-  delete process.env.UPSTASH_REDIS_REST_URL; delete process.env.KV_REST_API_URL;
-  assert.equal((await request()).body.enabled, false);
+  const failed = recordView('/about/'); scripts.at(-1).onerror();
+  assert.equal(await failed, undefined);
+  const timedOut = recordView('/about/'), late = scripts.at(-1);
+  [...timers.values()].find(timer => timer.delay === 8000).fn();
+  assert.equal(await timedOut, undefined);
+  assert.doesNotThrow(() => respond(late, { page_pv: 1, site_pv: 2, site_uv: 1 }), 'late callback caused an application error');
+  for (const timer of [...timers.values()]) if (timer.delay === 60_000) timer.fn();
+  assert.equal(Object.keys(window).filter(key => key.startsWith('TownViews_')).length, 0, 'JSONP callbacks leaked');
 } finally {
-  globalThis.fetch = savedFetch;
-  for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
-  Object.assign(process.env, savedEnv);
+  if (savedWindow === undefined) delete globalThis.window; else globalThis.window = savedWindow;
+  if (savedDocument === undefined) delete globalThis.document; else globalThis.document = savedDocument;
 }
-console.log('PASS: circular hamlet outside the article core with spare lots, reserved courtyard, stable article growth, real friend footprints/models, accurate stats, counter path/host boundaries and graceful outages');
+console.log('PASS: collision-reserved hamlet, stable growth, real models, accurate stats, external Busuanzi counts, preview isolation and graceful outages');

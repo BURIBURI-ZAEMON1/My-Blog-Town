@@ -38,7 +38,8 @@
     "verify:search-ime": "node scripts/verify-search-ime.mjs",
     "verify:article-startup": "node scripts/verify-article-startup.mjs",
     "verify:features": "node scripts/verify-town-features.mjs",
-    "verify:place-navigation": "node scripts/verify-place-navigation.mjs"
+    "verify:place-navigation": "node scripts/verify-place-navigation.mjs",
+    "verify:about": "node scripts/verify-about-ui.mjs"
   },
   "dependencies": {
     "@astrojs/react": "6.0.4",
