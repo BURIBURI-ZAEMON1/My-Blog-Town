@@ -20,7 +20,7 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1390 } });
   await context.addInitScript(() => sessionStorage.setItem('town:entered', 'true'));
   let localCounterRequests = 0;
-  await context.route('https://busuanzi.ibruce.info/**', route => { localCounterRequests++; return route.abort(); });
+  await context.route('https://busuanzi.9420.ltd/**', route => { localCounterRequests++; return route.abort(); });
   const page = await context.newPage(); observeErrors(page);
   await page.goto(`${base}/about/`);
   await page.locator('.about-card').last().waitFor();
@@ -88,11 +88,9 @@ try {
     }
   });
   const referrers = [];
-  await production.route('https://busuanzi.ibruce.info/busuanzi?**', async route => {
-    referrers.push(await route.request().headerValue('referer'));
-    const callback = new URL(route.request().url()).searchParams.get('jsonpCallback');
-    assert.match(callback, /^TownViews_\d+_\d+$/);
-    await route.fulfill({ contentType: 'application/javascript', body: `${callback}({site_pv:3210,site_uv:456,page_pv:78});` });
+  await production.route('https://busuanzi.9420.ltd/api', async route => {
+    referrers.push(await route.request().headerValue('x-bsz-referer'));
+    await route.fulfill({ contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Set-Bsz-Identity', 'Set-Bsz-Identity': 'test-visitor' }, body: JSON.stringify({ success: true, data: { site_pv: 3210, site_uv: 456, page_pv: 99, page_uv: 78 } }) });
   });
   const live = await production.newPage(); observeErrors(live);
   await live.goto(`${host}/about/`);
@@ -103,10 +101,10 @@ try {
   await live.locator('.desktop-top-links a[href="/posts/"]').click();
   await live.waitForURL('**/posts/');
   await live.locator('.archive-row').first().click();
-  await live.locator('.article-meta').getByText('78 次阅读', { exact: true }).waitFor();
+  await live.locator('.article-meta').getByText('78 人看过', { exact: true }).waitFor();
   assert(referrers.includes(`${host}/posts/`), 'SPA archive visit was not counted');
   assert(referrers.some(url => url === live.url()), 'article referrer did not identify the current article');
-  console.log('PASS: canonical-origin external counter integration, About-only site PV/UV, per-article reading count, and SPA route referrers');
+  console.log('PASS: canonical-origin counter, About-only site PV/UV, per-article unique readers and explicit SPA paths');
   await live.evaluate(() => document.fonts.ready);
   await production.unrouteAll({ behavior: 'wait' });
   await production.close();
