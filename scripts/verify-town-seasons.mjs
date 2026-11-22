@@ -20,6 +20,33 @@ const {createSeasonController}=load('src/scene/brick-town/seasons.ts');
 const {createWeatherController}=load('src/scene/brick-town/weather.ts');
 const {getSeasonForDate,SEASON_ORDER}=load('src/data/town-seasons.ts');
 const {createPrecipitationField,weatherIsPrecipitating}=load('src/data/town-weather.ts');
+const {getTownDaylight,blendTownDaylight,daylightStep}=load('src/data/town-daylight.ts');
+const lightAt=(hour,forceNight=false,wet=false)=>getTownDaylight(new Date(2026,5,15,Math.floor(hour),Math.round(hour%1*60)),forceNight,wet);
+const morning=lightAt(7),noon=lightAt(12),evening=lightAt(17),night=lightAt(22);
+assert(morning.direction[0]<0&&evening.direction[0]>0,'sun did not move across the town');
+const shadowLength=light=>Math.hypot(light.direction[0],light.direction[2])/-light.direction[1];
+assert(shadowLength(morning)>shadowLength(noon)*3&&shadowLength(evening)>shadowLength(noon)*3,'morning/evening shadows are not longer than noon');
+assert(morning.sun<noon.sun&&evening.sun<noon.sun,'low sun is as strong as noon');
+assert(noon.sun/noon.sky>5,'clear midday sunlight is washed out by sky fill');
+assert(morning.sunColor[2]<noon.sunColor[2],'morning sunlight is not warmer');
+assert.equal(night.sun,0,'night retains direct sunlight');
+assert.equal(lightAt(5.75).sun,0,'sun below the morning horizon still casts direct light');
+assert.equal(lightAt(18.25).sun,0,'sun below the evening horizon still casts direct light');
+assert.equal(night.night,1);
+for(const hour of [0,6,12,18,23])assert.deepEqual(lightAt(hour,true),night,'night theme did not lock solar time');
+const wet=lightAt(12,false,true);
+assert.equal(wet.sun*(1-daylightStep(0,.55,wet.cloud)),0,'rain retains direct sunlight');
+for(let cloud=0;cloud<=1;cloud+=.01)assert(!(daylightStep(.6,1,cloud)>0&&1-daylightStep(0,.55,cloud)>0),'rain appears before direct sunlight has vanished');
+assert.deepEqual(blendTownDaylight(noon,night,0),{...noon,hour:night.hour});
+assert.deepEqual(blendTownDaylight(noon,night,1),night);
+const partial=blendTownDaylight(noon,night,.25),reverse=blendTownDaylight(partial,noon,.1);
+assert(partial.night>reverse.night&&reverse.night>0,'interrupted theme transition jumped to its endpoint');
+for(let minute=1;minute<1440;minute++) {
+  const previous=lightAt((minute-1)/60),current=lightAt(minute/60);
+  assert(Math.abs(current.night-previous.night)<.025&&Math.abs(current.sun-previous.sun)/noon.sun<.02,'solar lighting jumps at a clock boundary');
+}
+const wetSlots=Array.from({length:10000},(_,slot)=>Number(weatherIsPrecipitating('heavens-door-town-v1',slot))).reduce((a,b)=>a+b,0);
+assert(wetSlots>1500&&wetSlots<2100,'precipitation probability is no longer close to 18%');
 const expected=['winter','winter','spring','spring','spring','summer','summer','summer','autumn','autumn','autumn','winter'];
 for(let month=0;month<12;month++)assert.equal(getSeasonForDate(new Date(2026,month,15)),expected[month]);
 
@@ -77,6 +104,8 @@ for(const mobile of [false,true]) {
   const countBefore=scene.meshes.length;
   weather.set('rain',true,false);weather.tick(0.1);
   assert(weather.animated);assert.equal(weather.kind,'rain');
+  weather.set('rain',true,false,.5);assert.equal(scene.getMeshByName('town-precipitation').alpha,.21,'rain did not fade with cloud cover');
+  weather.set('rain',true,false,0);assert(!scene.getMeshByName('town-precipitation').isEnabled(),'zero-strength rain still renders');
   weather.set('snow',true,false);weather.tick(0.1);
   assert.equal(scene.meshes.length,countBefore+1,'weather created multiple live precipitation systems');
   assert.equal(weather.kind,'snow');
@@ -94,4 +123,4 @@ const snow=createPrecipitationField(randomFor('same-seed'),500,townBoard,'snow')
 assert(snow.every((drop,index)=>drop.speed<rain[index].speed),'snow should fall slower than rain');
 assert(rain.every(drop=>Number.isFinite(drop.x+drop.y+drop.z+drop.speed)));
 assert(Array.from({length:96},(_,slot)=>weatherIsPrecipitating('heavens-door-town-v1',slot)).some(Boolean));
-console.log(JSON.stringify({message:'Season layout/picking/occupancy, repeated disposal, reduced motion and shared weather PASS',summaries},null,2));
+console.log(JSON.stringify({message:'Local solar cycle, long/short shadows, night lock, overcast, interrupted transitions, 18% precipitation; season layout/picking/occupancy, disposal and reduced motion PASS',summaries},null,2));

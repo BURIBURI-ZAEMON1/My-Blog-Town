@@ -24,10 +24,14 @@ try {
   await page.goto(base);
   const canvas = page.locator('.brick-town-host canvas');
   await page.waitForFunction(() => document.querySelector('.brick-town-host canvas')?.dataset.loadingMs && document.querySelector('.brick-town-host canvas')?.dataset.effectsReady === 'true', null, { timeout: 60000 });
-  const idle = () => page.waitForFunction(() => document.querySelector('.brick-town-host canvas')?.dataset.renderLoop === 'idle', null, { timeout: 20000 });
+  const idle = async () => {
+    try { await page.waitForFunction(() => document.querySelector('.brick-town-host canvas')?.dataset.renderLoop === 'idle', null, { timeout: 90000 }); }
+    catch (error) { console.error({ state: await canvas.evaluate(element => ({ ...element.dataset })), errors }); throw error; }
+  };
   const snapshot = () => page.evaluate(() => ({ draws: window.__townDraws, frames: +document.querySelector('.brick-town-host canvas').dataset.frames }));
-  // Red-capable even before the new render-loop diagnostic exists.
-  await page.waitForTimeout(1500);
+  // Measure between scheduled solar wakes, rather than across a minute boundary.
+  await idle();
+  await page.waitForFunction(() => 60000-Date.now()%60000>5000); await idle();
   const before = await snapshot(); await page.waitForTimeout(1200); const after = await snapshot();
   assert.equal(after.draws, before.draws, 'static reduced-motion town is still issuing GPU draws');
   await idle();
@@ -51,15 +55,19 @@ try {
   }
   await page.getByRole('button', { name: '切换昼夜模式', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('.brick-town-host canvas').dataset.colorMode === 'night'); await idle();
+  assert.equal(+await canvas.getAttribute('data-solar-hour'),22,'night theme did not lock the local solar day');
+  assert.equal(+await canvas.getAttribute('data-sun-intensity'),0,'completed night transition retained residual sunlight');
+  assert.equal(+await canvas.getAttribute('data-window-light'),1,'completed night transition left windows partially lit');
+  assert.equal(+await canvas.getAttribute('data-light-count'),2,'unexpected extra town light');
   await page.setViewportSize({ width: 1300, height: 900 }); await idle();
   const size = await canvas.evaluate(element => ({ width: element.width, height: element.height, cssWidth: element.clientWidth, cssHeight: element.clientHeight }));
   assert(size.width > 0 && size.height > 0);
 
-  // Timer must wake the static scene at the same weather-slot boundary. Only
+  // Minute wakes update the local solar day and aligned weather slots. Only
   // this test accelerates the long setTimeout; it does not alter product timers.
   await page.evaluate(() => {
     const native = window.setTimeout;
-    window.setTimeout = function (callback, delay, ...args) { return native(callback, delay > 60000 ? 1200 : delay, ...args); };
+    window.setTimeout = function (callback, delay, ...args) { return native(callback, delay > 10000 ? 1200 : delay, ...args); };
   });
   await page.getByRole('button', { name: '切换昼夜模式', exact: true }).click(); await idle();
   const slotFrames = (await snapshot()).frames;
@@ -81,13 +89,13 @@ try {
   await client.send('Performance.enable');
   const heaps = [];
   for (let cycle = 0; cycle < 4; cycle++) {
-    await page.getByRole('button', { name: '档案', exact: true }).click();
+    await page.getByRole('navigation', { name: '主导航', exact: true }).getByRole('link', { name: '档案', exact: true }).click();
     assert.equal(await canvas.count(), 0, 'town stayed mounted on archive');
     await client.send('HeapProfiler.collectGarbage');
     const values = Object.fromEntries((await client.send('Performance.getMetrics')).metrics.map(metric => [metric.name, metric.value]));
     heaps.push({ heap: values.JSHeapUsedSize, nodes: values.Nodes });
     if (cycle < 3) {
-      await page.getByRole('button', { name: '小镇', exact: true }).click();
+      await page.getByRole('navigation', { name: '主导航', exact: true }).getByRole('link', { name: '小镇', exact: true }).click();
       await page.waitForFunction(() => document.querySelector('.brick-town-host canvas')?.dataset.effectsReady === 'true', null, { timeout: 60000 });
     }
   }
