@@ -102,7 +102,7 @@ for(let i=0;i<220;i++){
 }
 assert(conversationPeak>0.8,'conversation never became visible');
 assert(maxStep<=0.6*0.02+1e-6,`conversation teleported (${maxStep})`);
-assert(rain.RAIN_PROBABILITY===0.3,'rain probability changed');
+assert(rain.RAIN_PROBABILITY===0.18,'rain probability changed');
 const sampledWeather=Array.from({length:96},(_,i)=>rain.weatherIsRainy('river-bend-demo-v2',i));
 assert(sampledWeather.filter(Boolean).length>3&&sampledWeather.filter(Boolean).length<38,'weather distribution is implausible');
 console.log('Simulation: visit, resident, thief lifecycle, occluded chase, smooth conversation PASS');

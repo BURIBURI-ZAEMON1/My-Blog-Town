@@ -79,7 +79,7 @@ try {
   if (!failures.length) {
     await page.locator('.series-drawer-toggle').click();
     assert.equal(await page.locator('.series-drawer-toggle').getAttribute('aria-expanded'), 'true');
-    await page.locator('.series-drawer-list button:not(.is-current)').first().click();
+    await page.locator('.series-drawer-list a:not(.is-current)').first().click();
     await page.waitForFunction(() => document.querySelector('.main-scroll').scrollTop < 1);
   }
   assert.deepEqual(errors, []);
