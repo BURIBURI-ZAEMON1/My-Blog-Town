@@ -59,9 +59,17 @@ try {
     await page.locator('.site-entry').waitFor({ state: 'detached' });
     assert.equal(await page.locator('.app-shell').evaluate(el => el.inert), false);
     assert.equal(await page.evaluate(() => sessionStorage.getItem('town:entered')), 'true');
-    // The same session skips splash, leaving the independent canvas loader.
+    // A completed session must still cover a slow home-page refresh.
     await page.reload({ waitUntil: 'domcontentloaded' });
-    assert.equal(await page.locator('.site-entry').isVisible(), false);
+    await page.waitForSelector('.site-entry[data-phase="waiting"]');
+    assert(await page.locator('.app-shell').evaluate(el => el.inert), 'home reload skipped splash after a previous entry');
+    await page.evaluate(() => { document.documentElement.dataset.siteReady = 'true'; });
+    await page.locator('.site-entry').waitFor({ state: 'detached' });
+    // Bypassing the resource cache (as after a deployment) uses the same policy.
+    const client = await context.newCDPSession(page);
+    await Promise.all([page.waitForEvent('domcontentloaded'), client.send('Page.reload', { ignoreCache: true })]);
+    await page.waitForSelector('.site-entry[data-phase="waiting"]');
+    await page.screenshot({ path: `/tmp/town-splash-reload-${viewport.width}.png` });
     await page.waitForSelector('.brick-town-loader[data-phase="steady"]');
     const dots = page.locator('.brick-loader-mark i');
     assert.equal(await dots.count(), 3, 'local loader should contain three dots');
@@ -71,6 +79,25 @@ try {
     }));
     assert(styles.every(style => style.animation === 'town-loader-float' && style.color === 'rgb(179, 179, 179)' && style.radius === '50%'));
     assert.equal(new Set(styles.map(style => style.delay)).size, 3, 'dots should float in sequence');
+    await page.goto(`${base}/posts/`, { waitUntil: 'domcontentloaded' });
+    assert.equal(await page.locator('.site-entry').isVisible(), false, 'archive re-entry replayed splash');
+    const articlePath = await page.locator('.archive-row').first().getAttribute('href');
+    assert(articlePath, 'article reload check needs a published article');
+    await page.goto(new URL(articlePath, base).href, { waitUntil: 'domcontentloaded' });
+    assert.equal(await page.locator('.site-entry').isVisible(), false, 'article re-entry replayed splash');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    assert.equal(await page.locator('.site-entry').isVisible(), false, 'article refresh replayed splash');
+    await page.waitForFunction(() => !document.querySelector('astro-island[ssr]'));
+    await page.evaluate(() => { window.spaEntryProbe = true; });
+    if (viewport.width < 720) {
+      await page.getByRole('button', { name: '打开侧边栏', exact: true }).click();
+      await page.locator('.mobile-sidebar-nav a[href="/"]').click();
+    } else {
+      await page.locator('.desktop-top-links a[href="/"]').click();
+    }
+    await page.waitForURL(new URL('/', base).href);
+    assert(await page.evaluate(() => window.spaEntryProbe), 'town navigation unexpectedly reloaded the document');
+    assert.equal(await page.locator('.site-entry').isVisible(), false, 'in-app return to town replayed splash');
     await context.close();
   }
   const reduced = await browser.newContext({ reducedMotion: 'reduce', viewport: { width: 390, height: 844 } });
@@ -79,7 +106,7 @@ try {
   await page.goto(`${base}/posts/`, { waitUntil: 'domcontentloaded' });
   await page.locator('.site-entry').waitFor({ state: 'hidden' });
   assert.equal(await page.locator('.app-shell').evaluate(el => el.inert), false);
-  assert(await page.getByText('全部文章', { exact: true }).first().isVisible());
+  await page.locator('.archive-shell-heading h1').waitFor({ state: 'visible' });
   await reduced.close();
   const quick = await browser.newContext();
   const quickPage = await quick.newPage();
@@ -114,5 +141,5 @@ try {
   assert.equal(await article.locator('.app-shell').evaluate(el => el.inert), false);
   await noScript.close();
   assert.deepEqual(errors, []);
-  console.log('PASS: overlapping doors, continuous handoff, viewport coverage, bounded loops, desktop/mobile, session skip, reduced motion, and no-JS reading.');
+  console.log('PASS: overlapping doors, continuous handoff, desktop/mobile home reload and cache bypass, direct article refresh and in-app navigation, reduced motion, and no-JS reading.');
 } finally { await browser.close(); }
