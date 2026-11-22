@@ -85,6 +85,49 @@ for(const distance of [-.02,.02,-.02,.02]){
 nearBoundary[12]=boundary-.9+.06;
 hysteresis.retarget(nearBoundary,0,true,false);hysteresis.tick(.4);
 assert.equal(hysteresis.visibility(18,0),0,'hysteresis prevented deliberate withdrawal');
+const panToZoom=new TownEdgeField();
+panToZoom.retarget(edgeMatrix,0,true,true,true);
+panToZoom.retarget(pannedEdge,0,false,false);panToZoom.tick(.5);
+const pulledBack=[...pannedEdge];pulledBack[0]=pulledBack[9]=.02;pulledBack[12]=1.6;
+assert.equal(panToZoom.visibility(0,0),1);
+assert.equal(panToZoom.visibility(-40.32,0),0);
+panToZoom.retarget(pulledBack,0,true,false);panToZoom.tick(0);
+assert.equal(panToZoom.visibility(0,0),1,'pulling back instantly removed retained pan bricks');
+panToZoom.tick(.06);
+const departing=panToZoom.owners.findIndex((owner,i)=>owner===i&&panToZoom.progress[i]>0&&panToZoom.progress[i]<1);
+assert(departing>=0&&panToZoom.data[departing*4+2]>128,'retained pan bricks did not lift before landing');
+assert.equal(panToZoom.visibility(-40.32,0),0,'outer bricks rose before the landing finished');
+panToZoom.retarget(pulledBack,0,true,false);panToZoom.tick(.06);
+assert(panToZoom.visibility(0,0)>0,'retained edge vanished before its landing finished');
+assert.equal(panToZoom.visibility(-40.32,0),0,'repeated zoom restarted or bypassed the landing delay');
+panToZoom.tick(.25);
+assert.equal(panToZoom.visibility(0,0),0,'retained edge did not disappear after landing');
+assert(panToZoom.visibility(-40.32,0)>0&&panToZoom.visibility(-40.32,0)<1,'pull-back reveal did not follow the landing');
+const visiblePose=panToZoom.data.slice();
+const reversing=panToZoom.progress.findIndex(progress=>progress>0&&progress<1);
+assert(reversing>=0);
+panToZoom.retarget(pannedEdge,0,true,false,false,true);panToZoom.tick(0);
+assert.equal(panToZoom.data[reversing*4+2],visiblePose[reversing*4+2],'reversing the staged transition jumped visible brick height');
+panToZoom.tick(0,true);assert.equal(panToZoom.animating,false,'reduced motion did not settle the staged transition');
+const fullyPanned=new TownEdgeField(),approachReference=new TownEdgeField();
+fullyPanned.retarget(edgeMatrix,0,true,true,true);
+for(let x=-3;x<=3;x++)for(let y=-3;y<=3;y++){
+  const view=[...edgeMatrix];view[12]=x;view[13]=y;
+  fullyPanned.retarget(view,0,false,false);fullyPanned.tick(.5);
+}
+assert(fullyPanned.progress.every(progress=>progress===1),'pan fixture did not reveal the whole town');
+fullyPanned.retarget(highEdge,0,true,false);fullyPanned.tick(0);
+assert(fullyPanned.data.every((value,i)=>i%4!==0||value===255),'pull-back immediately cut the fully revealed town');
+approachReference.retarget(edgeMatrix,0,true,false,false,true);
+for(const seconds of [.06,.12]){
+  fullyPanned.tick(seconds);approachReference.tick(seconds);
+  const i=fullyPanned.owners.findIndex((owner,i)=>owner===i&&fullyPanned.progress[i]>0&&fullyPanned.progress[i]<1);
+  assert(i>=0&&fullyPanned.data[i*4+2]>128,'fully revealed pan edges disappeared without the approach-style lift and landing');
+  assert.equal(fullyPanned.data[i*4+2],approachReference.data[i*4+2],'pull-back cleanup used a different motion from approaching');
+}
+fullyPanned.tick(.2);
+assert.equal(fullyPanned.animating,false);assert.equal(fullyPanned.visibility(0,0),1);
+assert.equal(fullyPanned.visibility(50.4,0),0,'fully panned edges did not disappear after landing');
 const edgeShader=readFileSync('src/scene/brick-town/edge-reveal.ts','utf8');
 assert(!edgeShader.includes('finalColor.rgb = mix'),'persistent background-color fog returned');
 assert.deepEqual(BOARD,townBoard,'Babylon world and mini-map use different coordinate bounds');
