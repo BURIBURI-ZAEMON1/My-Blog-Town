@@ -42,10 +42,10 @@ const jsonLdText = JSON.stringify(buildPageJsonLd(selectedPost)).replace(/</g, '
       // Each full town load may fetch new assets; in-app navigation stays direct.
       if (document.documentElement.dataset.initialSurface === 'town' || !entered) {
         document.documentElement.classList.add('has-site-entry');
-        // Keep the reading paths accessible even if the startup module fails.
+        // A slow town keeps its cover; reading remains available if startup stalls.
         window.setTimeout(() => {
-          document.documentElement.classList.remove('has-site-entry');
-          document.querySelector('.app-shell')?.removeAttribute('inert');
+          if (document.documentElement.dataset.siteReady === 'true') return;
+          document.querySelector('.site-entry-fallback')?.removeAttribute('hidden');
         }, 15000);
       }
     </script>
@@ -72,7 +72,6 @@ const jsonLdText = JSON.stringify(buildPageJsonLd(selectedPost)).replace(/</g, '
     <link rel="icon" href="/favicon-64.png" type="image/png" />
     <title>{pageTitle}</title>
     <script id="page-jsonld" is:inline type="application/ld+json" set:html={jsonLdText}></script>
-    {initialSurface === 'town' && <link rel="preload" href="/assets/brick-town/studio.env" as="fetch" crossorigin="anonymous" />}
     <script>
       import '../scripts/town-startup';
     </script>
@@ -84,6 +83,7 @@ const jsonLdText = JSON.stringify(buildPageJsonLd(selectedPost)).replace(/</g, '
       <div class="site-entry-passage" aria-hidden="true"></div>
       <div class="site-entry-still" aria-hidden="true"><i></i></div>
       <div class="site-entry-caption" aria-hidden="true"><span>{siteConfig.title}</span><em>{siteConfig.tagline}</em></div>
+      <a class="site-entry-fallback" href="/posts/" hidden>加载较久，先阅读文章</a>
     </div>
     <TownBlogApp client:load posts={posts} layout={layout} initialSurface={initialSurface} initialPostId={initialPostId} initialPostContent={initialPostContent} />
   </body>

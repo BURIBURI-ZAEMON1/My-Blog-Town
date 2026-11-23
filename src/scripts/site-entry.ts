@@ -11,8 +11,10 @@ export function startSiteEntry() {
   const caption = entry.querySelector<HTMLElement>('.site-entry-caption')!;
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const doors = new Map<number, { frame: HTMLElement; leaf: HTMLElement }>();
+  // Lock the Astro wrapper, leaving React's server HTML intact for hydration.
   const shell = document.querySelector<HTMLElement>('.app-shell');
-  shell?.setAttribute('inert', '');
+  const background = shell?.closest('astro-island') ?? shell;
+  background?.setAttribute('inert', '');
   let previousFrame = performance.now();
   let elapsed = 0;
   let finalDoor: number | undefined;
@@ -36,18 +38,18 @@ export function startSiteEntry() {
     if (finished) return;
     finished = true;
     cancelAnimationFrame(frame);
-    clearTimeout(watchdog);
     observer.disconnect();
     motion.removeEventListener('change', onReady);
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('resize', resize);
     root.classList.remove('has-site-entry');
-    shell?.removeAttribute('inert');
+    background?.removeAttribute('inert');
     entry.remove();
     try { sessionStorage.setItem('town:entered', 'true'); } catch { /* Entry also works without browser storage. */ }
   }
   function onReady() {
     if (root.dataset.siteReady !== 'true') return;
+    entry.querySelector<HTMLElement>('.site-entry-fallback')!.hidden = true;
     if (motion.matches) {
       entry.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, fill: 'forwards' }).finished.then(finish);
     } else {
@@ -116,7 +118,6 @@ export function startSiteEntry() {
   }
   const observer = new MutationObserver(onReady);
   observer.observe(root, { attributes: true, attributeFilter: ['data-site-ready'] });
-  const watchdog = window.setTimeout(finish, 14000);
   motion.addEventListener('change', onReady);
   document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('resize', resize);

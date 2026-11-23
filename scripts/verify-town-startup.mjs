@@ -61,20 +61,21 @@ try {
     const resources = performance.getEntriesByType('resource');
     return { ...window.__townStartup, timeOrigin: performance.timeOrigin, canvas: { ...document.querySelector('.brick-town-host canvas').dataset },
       runtimeStart: resources.find(entry => /\/runtime\.[^/]+\.js$/.test(new URL(entry.name).pathname))?.startTime,
-      fontsBeforeReady: resources.filter(entry => /\.(woff2?|ttf|otf)(\?|$)/.test(entry.name) && entry.startTime < window.__townStartup.fontRequest).length,
+      fontsBeforeReady: resources.filter(entry => /\.(woff2?|ttf|otf)(\?|$)/.test(entry.name) && entry.startTime < window.__townStartup.ready).length,
       bytes: resources.filter(entry => entry.responseEnd <= window.__townStartup.ready).reduce((sum, entry) => sum + entry.encodedBodySize, 0),
       environmentRequests: resources.filter(entry => entry.name.endsWith('/studio.env')).length };
   });
   assert(metrics.runtimeStart < 2000, `town runtime was discovered late: ${metrics.runtimeStart}ms`);
-  assert(metrics.fontRequest >= metrics.ready - 100, 'font loading was requested before the town was ready');
-  assert(fontRequests.every(start => start >= metrics.timeOrigin + metrics.fontRequest - 20), 'font downloads started before the deferred request');
   assert.equal(metrics.fontsBeforeReady, 0, 'font downloads competed with the base town');
-  assert.equal(metrics.environmentRequests, 1, 'environment preload was downloaded again');
+  assert.equal(metrics.environmentRequests, 0, 'unused studio environment competed with the base town');
   await page.locator('.brick-town-loader').waitFor({ state: 'detached' });
   await page.locator('.site-entry').waitFor({ state: 'hidden' });
   assert(metrics.ready < 12000, `cold startup exceeded the 12s regression budget: ${Math.round(metrics.ready)}ms`);
   // The deferred typography must still be applied, with the original families.
   await page.waitForSelector('style[data-town-fonts]', { state: 'attached', timeout: 30000 });
+  const fontRequest = await page.evaluate(() => window.__townStartup.fontRequest);
+  assert(fontRequest >= metrics.ready - 100, 'font loading was requested before the town was ready');
+  assert(fontRequests.every(start => start >= metrics.timeOrigin + fontRequest - 20), 'font downloads started before the deferred request');
   assert(await page.locator('style[data-town-fonts]').evaluate(element => element.textContent.includes('ZCOOL QingKe HuangYou') && element.textContent.includes('IBM Plex Sans SC')));
   const sidebarSources = await page.locator('.brand-image source, .profile-panel source').evaluateAll(elements => elements.map(element => new URL(element.srcset, location.href).href));
   assert.equal(sidebarSources.length, 2);
@@ -95,7 +96,7 @@ try {
   assert.equal(metrics.canvas.renderer, 'webgl2');
   assert.deepEqual(errors, []);
   assert.deepEqual(imageErrors, []);
-  console.log(JSON.stringify({ message: 'PASS: cold production startup, early runtime, deferred original fonts, single environment fetch, no runtime errors', device: desktop ? 'desktop' : 'mobile', readyMs: Math.round(metrics.ready), sceneBuildMs: Number(metrics.canvas.sceneBuildMs), worldBuildMs: Number(metrics.canvas.worldBuildMs), bytesBeforeReady: metrics.bytes, longTaskMs: Math.round(metrics.longTasks.reduce((sum, duration) => sum + duration, 0)) }, null, 2));
+  console.log(JSON.stringify({ message: 'PASS: cold production startup, early runtime, deferred original fonts, no unused environment fetch, no runtime errors', device: desktop ? 'desktop' : 'mobile', readyMs: Math.round(metrics.ready), sceneBuildMs: Number(metrics.canvas.sceneBuildMs), worldBuildMs: Number(metrics.canvas.worldBuildMs), bytesBeforeReady: metrics.bytes, longTaskMs: Math.round(metrics.longTasks.reduce((sum, duration) => sum + duration, 0)) }, null, 2));
   await context.close();
 } finally {
   await browser?.close();

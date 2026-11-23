@@ -426,6 +426,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .site-entry-caption { position: absolute; inset: auto 0 max(15vh, 54px); display: grid; justify-items: center; gap: 9px; transition: opacity 280ms ease; }
 .site-entry-caption span { font-family: 'PingFang SC', system-ui, sans-serif; font-size: 13px; font-weight: 400; letter-spacing: .12em; }
 .site-entry-caption em { font-family: Georgia, serif; font-size: 13px; color: var(--muted); }
+.site-entry-fallback { position: absolute; bottom: max(7vh, 24px); left: 50%; transform: translateX(-50%); color: var(--ink); font-size: 12px; white-space: nowrap; text-underline-offset: 4px; }
 .site-entry-still { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .brick-loader-mark i { animation: none; }

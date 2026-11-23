@@ -37,8 +37,17 @@ try {
     await page.goto(base, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.site-entry[data-phase="waiting"]');
     assert.equal(await page.title(), '黑蚊子的门');
-    assert(await page.locator('.app-shell').evaluate(el => el.inert), 'background controls remained focusable');
-    await page.waitForTimeout(1450);
+    assert(await page.locator('.app-shell').evaluate(el => !!el.closest('[inert]')), 'background controls remained focusable');
+    // A cold mobile load can exceed both former 14s/15s escape timers.
+    await page.waitForTimeout(viewport.width < 720 ? 16000 : 1450);
+    assert(await page.locator('.site-entry').isVisible(), 'slow town lost splash before its first frame');
+    if (viewport.width < 720) {
+      assert.equal(await page.evaluate(() => document.documentElement.dataset.siteReady), undefined);
+      assert(await page.locator('.app-shell').evaluate(el => !!el.closest('[inert]')), 'slow town controls escaped the cover');
+      await page.locator('.site-entry-fallback').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('.site-entry-fallback').getAttribute('href'), '/posts/');
+      await page.screenshot({ path: '/tmp/town-splash-slow-covered.png' });
+    }
     assert((await page.locator('.site-entry-door').count()) <= 7, 'loop accumulated door nodes');
     await page.evaluate(() => {
       window.entryDoors = new Map([...document.querySelectorAll('.site-entry-door')].map(el => [el.dataset.door, { element: el, scale: new DOMMatrix(getComputedStyle(el).transform).a }]));
@@ -50,6 +59,7 @@ try {
       return !old || old.element === el && new DOMMatrix(getComputedStyle(el).transform).a >= old.scale;
     })), 'readiness replaced or reset a moving door');
     await page.waitForSelector('.site-entry[data-phase="crossing"]');
+    assert.equal(await page.locator('.site-entry-fallback').isVisible(), false, 'reading fallback covered the final passage');
     const final = await page.locator('.site-entry').getAttribute('data-final-door');
     await page.waitForSelector(`.site-entry-door[data-door="${final}"]`);
     const door = await page.locator(`.site-entry-door[data-door="${final}"]`).elementHandle();
@@ -57,12 +67,12 @@ try {
     assert(await door.evaluate(el => el.isConnected), 'final door was replaced during the crossing');
     assert.match(await page.locator('.site-entry-veil path').getAttribute('d'), /Z M/, 'page was not revealed through the door aperture');
     await page.locator('.site-entry').waitFor({ state: 'detached' });
-    assert.equal(await page.locator('.app-shell').evaluate(el => el.inert), false);
+    assert.equal(await page.locator('.app-shell').evaluate(el => !!el.closest('[inert]')), false);
     assert.equal(await page.evaluate(() => sessionStorage.getItem('town:entered')), 'true');
     // A completed session must still cover a slow home-page refresh.
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.site-entry[data-phase="waiting"]');
-    assert(await page.locator('.app-shell').evaluate(el => el.inert), 'home reload skipped splash after a previous entry');
+    assert(await page.locator('.app-shell').evaluate(el => !!el.closest('[inert]')), 'home reload skipped splash after a previous entry');
     await page.evaluate(() => { document.documentElement.dataset.siteReady = 'true'; });
     await page.locator('.site-entry').waitFor({ state: 'detached' });
     // Bypassing the resource cache (as after a deployment) uses the same policy.
@@ -105,7 +115,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${base}/posts/`, { waitUntil: 'domcontentloaded' });
   await page.locator('.site-entry').waitFor({ state: 'hidden' });
-  assert.equal(await page.locator('.app-shell').evaluate(el => el.inert), false);
+  assert.equal(await page.locator('.app-shell').evaluate(el => !!el.closest('[inert]')), false);
   await page.locator('.archive-shell-heading h1').waitFor({ state: 'visible' });
   await reduced.close();
   const quick = await browser.newContext();
@@ -138,7 +148,7 @@ try {
   const article = await noScript.newPage();
   await article.goto(`${base}/posts/`);
   assert.equal(await article.locator('.site-entry').isVisible(), false, 'splash blocked server-rendered content without JS');
-  assert.equal(await article.locator('.app-shell').evaluate(el => el.inert), false);
+  assert.equal(await article.locator('.app-shell').evaluate(el => !!el.closest('[inert]')), false);
   await noScript.close();
   assert.deepEqual(errors, []);
   console.log('PASS: overlapping doors, continuous handoff, desktop/mobile home reload and cache bypass, direct article refresh and in-app navigation, reduced motion, and no-JS reading.');
