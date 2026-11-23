@@ -88,8 +88,8 @@ try {
     }
   });
   const referrers = [];
-  await production.route('https://bsz.dusays.com/api', async route => {
-    referrers.push(await route.request().headerValue('x-bsz-referer'));
+  await production.route(`${host}/api/views?**`, async route => {
+    referrers.push(new URL(new URL(route.request().url()).searchParams.get('path'), host).href);
     await route.fulfill({ contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Set-Bsz-Identity', 'Set-Bsz-Identity': 'test-visitor' }, body: JSON.stringify({ success: true, data: { site_pv: 3210, site_uv: 456, page_pv: 99, page_uv: 78 } }) });
   });
   const live = await production.newPage(); observeErrors(live);
