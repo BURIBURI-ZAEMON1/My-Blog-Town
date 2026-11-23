@@ -20,7 +20,10 @@ function project(point, box, data) {
   scene.dispose();
   return { x: box.x + p.x, y: box.y + p.y };
 }
-const ready = page => page.waitForFunction(() => document.querySelector('canvas')?.dataset.effectsReady === 'true', null, { timeout: 60000 });
+async function ready(page) {
+  await page.waitForFunction(() => document.querySelector('canvas')?.dataset.effectsReady === 'true', null, { timeout: 60000 });
+  await page.locator('.site-entry').waitFor({ state: 'hidden', timeout: 60000 });
+}
 async function observe(page) {
   await page.evaluate(() => {
     const canvas = document.querySelector('canvas');
@@ -57,6 +60,42 @@ try {
   const page = await context.newPage();
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  await context.addInitScript(() => {
+    window.placeRoutes = [];
+    const pushState = history.pushState;
+    history.pushState = function (...args) {
+      window.placeRoutes.push(new URL(args[2], location.href).pathname);
+      return pushState.apply(this, args);
+    };
+  });
+  await page.goto(`${base}/posts/`);
+  const articlePath = await page.locator('.archive-row').first().getAttribute('href');
+  for (const path of ['/posts/', articlePath, '/about/']) {
+    for (const entry of ['friend', 'navigation', 'avatar']) {
+      await page.goto(`${base}${path}`);
+      await page.waitForFunction(() => !document.querySelector('astro-island')?.hasAttribute('ssr'));
+      if (entry === 'friend') {
+        await page.locator('.desktop-sidebar-nav button').filter({ hasText: '友邻' }).click();
+        const link = page.locator('.friend-row').first();
+        const destination = await link.getAttribute('href');
+        await context.route(`${destination}/**`, route => route.fulfill({ contentType: 'text/html', body: '<h1>Direct friend destination</h1>' }));
+        const popupPromise = page.waitForEvent('popup');
+        void popupPromise.catch(() => {});
+        await link.click();
+        assert.deepEqual(await page.evaluate(() => window.placeRoutes), [], `${path}: friend detoured through town`);
+        const popup = await popupPromise;
+        await popup.getByRole('heading', { name: 'Direct friend destination' }).waitFor();
+        assert.equal(new URL(page.url()).pathname, path, 'friend replaced the current page');
+        await popup.close();
+      } else {
+        await page.locator(entry === 'navigation' ? '.desktop-top-links a[href="/about/"]' : '.profile-avatar-link').click();
+        assert(!(await page.evaluate(() => window.placeRoutes)).includes('/'), `${path}: ${entry} detoured through town`);
+        await page.waitForURL('**/about/');
+      }
+      assert.equal(await page.locator('canvas').count(), 0, `${path}: non-town entry mounted a scene`);
+    }
+  }
+  console.log('PASS: archive, article and About entries navigate directly without visiting town; friends preserve the source tab');
   await page.goto(base); await ready(page);
   await page.waitForTimeout(600);
   await page.screenshot({ path: '/tmp/town-fixed-ring.png' });
@@ -96,12 +135,12 @@ try {
   await page.screenshot({ path: '/tmp/about-fixed-desktop.png' });
   console.log('PASS: desktop About entry flies to windmill before navigation; reference layout has no contents/comments');
 
-  // About from archive must load the town, wait for readiness, then fly.
+  // About from archive must skip the town entirely.
   await page.locator('.desktop-top-links a[href="/posts/"]').click();
   await page.locator('.desktop-top-links a[href="/about/"]').click();
-  await page.waitForFunction(() => document.querySelector('canvas')?.dataset.focusPost === 'about');
   await page.waitForURL('**/about/');
-  console.log('PASS: About entry outside town waits for scene initialization');
+  assert.equal(await page.locator('canvas').count(), 0);
+  console.log('PASS: About entry outside town skips scene initialization');
 
   await page.locator('.desktop-top-links a[href="/"]').click(); await ready(page); await observe(page);
   await clickModel(page, { x: 0, y: 2.5, z: 0 }, '关于');
