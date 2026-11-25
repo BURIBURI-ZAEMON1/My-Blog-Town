@@ -33,30 +33,12 @@ assert(rain.rainYAtTime(12, 0.2, 20, 0) !== rain.rainYAtTime(12, 0.2, 20, 0.25),
 assert(rain.rainYAtTime(12, 0.2, 20, 0) > rain.RAIN_BOTTOM, 'rain streak starts outside the valid rain area');
 assert(rain.rainXAtTime(0, 68 / rain.RAIN_WIND_X) === rain.rainXAtTime(0, 0), 'rain horizontal motion does not wrap');
 
-const day = life.planTownPopulation({ plotCount: 3, night: false, rainy: false, random: sequence(0.5, 0.2, 0.3, 0.4, 0.1, 0.2) });
+const day = life.planTownPopulation({ plotCount: 3, random: sequence(0.5, 0.2, 0.3, 0.4, 0.1, 0.2) });
 assert(day.length >= 3, `three buildings should sustain at least three daytime people, got ${day.length}`);
 assert(day.some((person) => person.role === 'townsperson'), 'day plan has no townsperson');
 assert(day.some((person) => person.role === 'traveler'), 'day plan has no traveler');
 assert(day.some((person) => person.role === 'guard'), 'day plan has no guard');
 assert(!day.some((person) => person.role === 'thief'), 'day plan generated a thief');
-
-const nightWithThief = life.planTownPopulation({ plotCount: 5, night: true, rainy: false, random: sequence(0.9, 0.2, 0.3, 0.2, 0.1, 0.1, 0.1) });
-assert(nightWithThief.some((person) => person.role === 'thief'), 'night event roll did not generate a thief');
-assert(nightWithThief.filter((person) => person.role === 'thief').length === 1, 'more than one thief generated');
-
-const sparseNightCount = life.getTownPopulationCount({ plotCount: 3, night: true, rainy: true, random: sequence(0) });
-assert(sparseNightCount === 3, `three-building town lost a core role in sparse weather (${sparseNightCount})`);
-
-const smallNight = life.planTownPopulation({ plotCount: 3, night: true, rainy: false, random: sequence(0.5, 0.2, 0.3, 0.1) });
-assert(smallNight.some((person) => person.role === 'guard'), 'small night event removed the guard');
-assert(smallNight.some((person) => person.role === 'thief'), 'small night town can never generate a thief');
-assert(smallNight.some((person) => person.role === 'townsperson'), 'small night event removed every townsperson');
-
-const rainyNight = life.getTownPopulationCount({ plotCount: 8, night: true, rainy: true, random: sequence(0.8) });
-const clearDay = life.getTownPopulationCount({ plotCount: 8, night: false, rainy: false, random: sequence(0.8) });
-assert(rainyNight < clearDay, `rainy night population (${rainyNight}) should be lower than clear day (${clearDay})`);
-assert(clearDay <= 10, `population exceeded performance cap (${clearDay})`);
-
 
 // Test the actual engine-independent simulation, not names or text in a renderer.
 const simulation = loadTs('src/scene/brick-town/life.ts');
@@ -70,7 +52,19 @@ const actor = (overrides = {}) => {
     timer:0, stay:false, conversation:0, conversationLeft:0, cooldown:10, chasing:false, returning:false, moving:true,
     ...overrides };
 };
-const emptyLayout = {...simulationLayout, plots:[], regions:[]};
+const emptyLayout = {...simulationLayout, plots:[], features:[], regions:[]};
+const approaching = [
+  actor({behavior:'commute',distance:1.05,position:{x:0,z:1.05}}),
+  actor({behavior:'commute',distance:1.95,position:{x:0,z:1.95},direction:-1,facing:{x:0,z:-1}}),
+];
+let closestPass=Infinity, passed=false;
+for(let i=0;i<180;i++){
+  simulation.tickLife(approaching,0.02,emptyLayout);
+  closestPass=Math.min(closestPass,Math.hypot(approaching[0].position.x-approaching[1].position.x,approaching[0].position.z-approaching[1].position.z));
+  passed ||= approaching[0].position.z>approaching[1].position.z+.15;
+}
+assert(closestPass>=simulation.CITIZEN_CLEARANCE-1e-6,`opposite walkers overlapped (${closestPass.toFixed(3)} units apart)`);
+assert(passed,'opposite walkers stopped indefinitely instead of passing');
 const visit = actor();
 const visited = new Set();
 for(let i=0;i<700;i++){simulation.tickLife([visit],0.02,emptyLayout);visited.add(visit.state);}
@@ -92,20 +86,46 @@ const blockedGuard=actor({role:'guard',behavior:'patrol',distance:0,position:{x:
 const blockedThief=actor({role:'thief',behavior:'sneak',distance:2,position:{x:0,z:2}});
 simulation.tickLife([blockedGuard,blockedThief],0.02,{...emptyLayout,plots:[{x:0,z:1,width:1,depth:0.6}]});
 assert(!blockedGuard.chasing&&blockedThief.state==='walking','guard saw through a building');
-const first=actor({pair:0,behavior:'commute',cooldown:0,distance:1,position:{x:0,z:1}});
-const second=actor({pair:0,behavior:'commute',cooldown:0,distance:1.5,position:{x:0,z:1.5}});
+const first=actor({behavior:'commute',cooldown:0,distance:1,position:{x:0,z:1}});
+const second=actor({behavior:'commute',cooldown:0,distance:1.8,position:{x:0,z:1.8},direction:-1,facing:{x:0,z:-1}});
 let previous={...first.position},maxStep=0,conversationPeak=0;
-for(let i=0;i<220;i++){
-  simulation.tickLife([first,second],0.02,emptyLayout);
+for(let i=0;i<270;i++){
+  simulation.tickLife([first,second],0.02,emptyLayout,{night:i>60,rainy:i>120});
   maxStep=Math.max(maxStep,Math.hypot(first.position.x-previous.x,first.position.z-previous.z));
   conversationPeak=Math.max(conversationPeak,first.conversation);previous={...first.position};
 }
 assert(conversationPeak>0.8,'conversation never became visible');
-assert(maxStep<=0.6*0.02+1e-6,`conversation teleported (${maxStep})`);
+assert(maxStep<=0.6*1.12*0.02+1e-6,`conversation teleported (${maxStep})`);
+assert(first.moving&&second.moving,'people did not resume their walk after the conversation');
+
+const waiting=actor({state:'resident',opacity:0,timer:100});
+const doorway=actor({state:'walking',gesture:'scan',pause:3});
+simulation.tickLife([waiting,doorway],.05,emptyLayout,{night:false,rainy:false});
+assert(waiting.state==='resident','a resident stepped into an occupied doorway');
+simulation.tickLife([waiting],.05,emptyLayout,{night:false,rainy:false});
+assert(waiting.state==='exiting','a resident did not leave after the doorway cleared');
+
+const traveler=actor({role:'traveler',behavior:'commute',nextPause:0,distance:1.3,position:{x:0,z:1.3}});
+simulation.tickLife([traveler],.05,emptyLayout,{night:false,rainy:false});
+assert(traveler.gesture==='map'&&!traveler.moving,'traveler did not stop to check their map');
+simulation.greetCitizen(traveler,{x:2,z:1.3});
+assert(traveler.gesture==='wave'&&traveler.facing.x===1,'clicked walker did not turn and wave');
+for(let i=0;i<36;i++)simulation.tickLife([traveler],.05,emptyLayout,{night:false,rainy:false});
+assert(traveler.moving&&traveler.gesture===undefined,'greeting interrupted the route permanently');
+
+const residents=simulation.createLife(simulationLayout,sequence(.5));
+const original=residents.map(person=>({person,position:person.position,route:person.route}));
+assert(simulation.addNightVisitor(residents,simulationLayout,true,sequence(.25))===undefined,'rain did not suppress the night visitor roll');
+const visitorIndex=simulation.addNightVisitor(residents,simulationLayout,false,sequence(.25,.1));
+assert(residents[visitorIndex]?.role==='thief','night event did not enter through a road');
+assert(original.every(({person,position,route},i)=>residents[i]===person&&person.position===position&&person.route===route),'night event replaced an existing resident or route');
+assert(simulation.addNightVisitor(residents,simulationLayout,false,sequence(0))===undefined,'duplicate thief entered');
+simulation.tickLife(residents,.02,simulationLayout,{night:false,rainy:false});
+assert(['escaping','gone'].includes(residents[visitorIndex].state),'night visitor did not leave at dawn');
 assert(rain.RAIN_PROBABILITY===0.18,'rain probability changed');
 const sampledWeather=Array.from({length:96},(_,i)=>rain.weatherIsRainy('river-bend-demo-v2',i));
 assert(sampledWeather.filter(Boolean).length>3&&sampledWeather.filter(Boolean).length<38,'weather distribution is implausible');
-console.log('Simulation: visit, resident, thief lifecycle, occluded chase, smooth conversation PASS');
+console.log('Simulation: passing, doorway queues, night continuity, map, greeting, conversation and occluded chase PASS');
 
 
 const pair = day.filter((person) => person.interactionGroup === 0);
@@ -158,13 +178,24 @@ for (let fromIndex = 0; fromIndex < layout.plots.length; fromIndex += 1) {
   }
 }
 
-console.log(JSON.stringify({
-  dayRoles: day.map((person) => person.role),
-  nightRoles: nightWithThief.map((person) => person.role),
-  smallNightRoles: smallNight.map((person) => person.role),
-  clearDayCount: clearDay,
-  rainyNightCount: rainyNight,
-  sparseNightCount,
-  pairedPeople: pair.length,
-  visitRouteChecks,
-}, null, 2));
+const crowded=layoutModule.createTownLayout('heavens-door-town-v1',Array.from({length:15},(_,index)=>({id:`crowd-${index}`})));
+const outside=person=>!['inside','resident','gone'].includes(person.state);
+let minCrowdGap=Infinity;
+for(const seed of [1,3,5]) {
+  let roll=seed;
+  const people=simulation.createLife(crowded,()=>((roll=(Math.imul(roll,1664525)+1013904223)>>>0)/4294967296));
+  assert(people.length===9,'large town did not respect the resident cap');
+  const distance=people.map(()=>0);
+  for(let step=0;step<3000;step++) {
+    const positions=people.map(person=>person.position);
+    simulation.tickLife(people,.04,crowded,{night:step>1000,rainy:step>2000});
+    for(const [index,person] of people.entries()) {
+      distance[index]+=Math.hypot(person.position.x-positions[index].x,person.position.z-positions[index].z);
+      if(!outside(person))continue;
+      for(const other of people.slice(index+1))if(outside(other))minCrowdGap=Math.min(minCrowdGap,Math.hypot(person.position.x-other.position.x,person.position.z-other.position.z));
+    }
+  }
+  assert(distance.every(total=>total>6),`seed ${seed}: a walker stalled in the road network (${distance.map(total=>total.toFixed(1))})`);
+}
+assert(minCrowdGap>=simulation.CITIZEN_CLEARANCE-1e-6,`crowd overlap at ${minCrowdGap}`);
+console.log(JSON.stringify({dayRoles:day.map(person=>person.role),pairedPeople:pair.length,visitRouteChecks,minCrowdGap:+minCrowdGap.toFixed(3)},null,2));
