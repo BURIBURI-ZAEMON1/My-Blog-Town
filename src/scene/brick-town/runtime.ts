@@ -428,8 +428,8 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     if(!down||e.pointerId!==down.pointerId){releasePointer(e.pointerId);return;}
     if(select&&!down.moved&&Math.hypot(e.clientX-down.x,e.clientY-down.y)<7){
       const id=pick(e);
-      if(id?.startsWith('friend:'))callbacks().onSelectPlace?.(id);
-      else if(id?.startsWith('feature:'))callbacks().onSelectPlace?.(id.slice(8));
+      if(id?.startsWith('friend:'))callbacks().onSelectPlace?.(id,e.pointerType);
+      else if(id?.startsWith('feature:'))callbacks().onSelectPlace?.(id.slice(8),e.pointerType);
       else if(id?.startsWith('citizen:')){greetCitizen(citizens[Number(id.slice(8))],camera.position);clearHover();}
       else if(id)callbacks().onSelectPost(id,e.pointerType);
       else {clearHover();}

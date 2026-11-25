@@ -49,12 +49,13 @@ type TownStageProps = TownSceneProps & {
   hoveredPost?: TownPostSummary;
   hoverAnchor?: SceneAnchor;
   touchPost?: TownPostSummary;
+  touchPlaceId?: string;
   onCloseTouchPreview: () => void;
   onSceneReady: () => void;
   onSceneError: () => void;
 };
 
-function TownStage({ sceneRef, hoveredPost, hoverAnchor, touchPost, onCloseTouchPreview, onSceneReady, onSceneError, ...sceneProps }: TownStageProps) {
+function TownStage({ sceneRef, hoveredPost, hoverAnchor, touchPost, touchPlaceId, onCloseTouchPreview, onSceneReady, onSceneError, ...sceneProps }: TownStageProps) {
   const [settled, setSettled] = useState(false);
   const settle = () => {
     setSettled(true);
@@ -74,11 +75,13 @@ function TownStage({ sceneRef, hoveredPost, hoverAnchor, touchPost, onCloseTouch
     </Suspense>
     <TownLoading ready={settled} reducedMotion={sceneProps.reducedMotion} />
     <TownTooltip post={hoveredPost} anchor={hoverAnchor} />
-    {touchPost && <div className="town-touch-preview" role="region" aria-label="建筑文章预览">
+    {(touchPost || touchPlaceId) && <div className="town-touch-preview" role="region" aria-label="建筑简介预览">
       <button className="touch-preview-close" aria-label="关闭建筑预览" onClick={onCloseTouchPreview}>{icon('close')}</button>
+      {touchPost ? <>
       <div className="tooltip-meta"><span>{touchPost.category}</span><span>{touchPost.readingTime} min</span></div>
       <strong>{touchPost.title}</strong><p>{touchPost.description}</p>
       <a className="touch-preview-read" href={`/posts/${encodeURIComponent(touchPost.id)}/`} onClick={(event) => handleInternalClick(event, () => { sceneProps.onTownExplored?.(); sceneProps.onSelectPost(touchPost.id); })}>阅读文章 {icon('arrow')}</a>
+      </> : <PlaceSummary id={touchPlaceId!} layout={sceneProps.layout} />}
     </div>}
   </div>;
 }
@@ -210,7 +213,9 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
   const searchIndexRequested = useRef(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [touchPostId, setTouchPostId] = useState<string>();
+  const [touchTarget, setTouchTarget] = useState<{ postId: string; placeId?: never } | { placeId: string; postId?: never }>();
+  const touchPostId = touchTarget?.postId;
+  const touchPlaceId = touchTarget?.placeId;
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -347,7 +352,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
         setHoveredPostId(undefined);
         setHoverAnchor(undefined);
         setMobileSidebarOpen(false);
-        setTouchPostId(undefined);
+        setTouchTarget(undefined);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -358,7 +363,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     pendingArticle.current = undefined;
     townSceneRef.current?.cancelFocus();
     setMobileSidebarOpen(false);
-    setTouchPostId(undefined);
+    setTouchTarget(undefined);
     setSearchOpen(false);
     inputRef.current?.blur();
     setPreviewCategory(undefined);
@@ -414,7 +419,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     cancelPlace();
     townSceneRef.current?.cancelFocus();
     setMobileSidebarOpen(false);
-    setTouchPostId(undefined);
+    setTouchTarget(undefined);
     setSearchOpen(false);
     inputRef.current?.blur();
     navigateTo(nextSurface, postId);
@@ -446,7 +451,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
   const chooseCategory = (category?: string) => {
     setPreviewCategory(undefined);
     setPreviewTag(undefined);
-    setTouchPostId(undefined);
+    setTouchTarget(undefined);
     setActiveCategory(category);
     setActiveTag(undefined);
     setSidebarCategory(category);
@@ -458,7 +463,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
   const chooseTag = (tag?: string) => {
     setPreviewCategory(undefined);
     setPreviewTag(undefined);
-    setTouchPostId(undefined);
+    setTouchTarget(undefined);
     setActiveTag(tag);
     setActiveCategory(undefined);
     setSidebarTag(tag);
@@ -481,7 +486,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     setHoveredPostId(id);
     setHoverAnchor(anchor);
     if (!id) {
-      setTouchPostId(undefined);
+      setTouchTarget(undefined);
       setPreviewCategory(undefined);
       setPreviewTag(undefined);
     }
@@ -506,7 +511,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     if (hoveredPostId === id) setHoverAnchor(anchor);
   };
   const openExplore = (panel: 'categories' | 'tags' | 'friends') => {
-    setTouchPostId(undefined);
+    setTouchTarget(undefined);
     setPreviewCategory(undefined);
     setPreviewTag(undefined);
     setHoveredPostId(undefined);
@@ -517,7 +522,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
   };
   const selectScenePost = (id: string, pointerType?: string) => {
     if (pointerType === 'touch' && touchPostId !== id) {
-      setTouchPostId(id);
+      setTouchTarget({ postId: id });
       setHoveredPostId(undefined);
       setHoverAnchor(undefined);
     } else {
@@ -525,10 +530,22 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
       openArticle(id);
     }
   };
+  const selectScenePlace = (id: string, pointerType?: string) => {
+    if (pointerType === 'touch' && touchPlaceId !== id) {
+      setTouchTarget({ placeId: id });
+      setHoveredPostId(undefined);
+      setHoverAnchor(undefined);
+      setHoveredPlaceId(undefined);
+      setPlaceAnchor(undefined);
+    } else {
+      setTouchTarget(undefined);
+      selectPlace(id);
+    }
+  };
   const openMobileSidebar = () => {
     setHoveredPostId(undefined);
     setHoverAnchor(undefined);
-    setTouchPostId(undefined);
+    setTouchTarget(undefined);
     setPreviewCategory(undefined);
     setPreviewTag(undefined);
     setSearchOpen(false);
@@ -615,7 +632,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
         <div className="main-scroll" ref={mainSurfaceRef}>
         {surface === 'town' && <section className="town-home">
           <h1 className="visually-hidden">{siteConfig.title} — {siteConfig.tagline}</h1>
-          <TownStage initialCamera={navigation.restore?.camera} onSceneError={finishPlace} onSceneReady={focusPlace} hoveredPlaceId={hoveredPlaceId} onHoverPlace={(id, anchor) => { setHoveredPlaceId(id); setPlaceAnchor(anchor); }} onResolvePlaceAnchor={(id, anchor) => { if (id === hoveredPlaceId) setPlaceAnchor(anchor); }} onSelectPlace={selectPlace} sceneRef={townSceneRef} posts={posts} layout={layout} newPostIds={newPostIds} guidePostId={guidePostId} onTownExplored={markExplored} season={season} activePostId={selectedPostId} hoveredPostId={touchPostId ?? hoveredPostId} query={query} category={highlightCategory} tag={highlightTag} categoryPreview={Boolean(previewCategory)} tagPreview={Boolean(previewTag)} colorMode={colorMode} reducedMotion={reducedMotion} onHoverPost={onHoverPost} onResolvePostAnchor={onResolvePostAnchor} onSelectPost={selectScenePost} hoveredPost={hoveredPost} hoverAnchor={hoverAnchor} touchPost={touchPost} onCloseTouchPreview={() => setTouchPostId(undefined)} />
+          <TownStage initialCamera={navigation.restore?.camera} onSceneError={finishPlace} onSceneReady={focusPlace} hoveredPlaceId={touchPlaceId ?? hoveredPlaceId} onHoverPlace={(id, anchor) => { setHoveredPlaceId(id); setPlaceAnchor(anchor); }} onResolvePlaceAnchor={(id, anchor) => { if (id === hoveredPlaceId) setPlaceAnchor(anchor); }} onSelectPlace={selectScenePlace} sceneRef={townSceneRef} posts={posts} layout={layout} newPostIds={newPostIds} guidePostId={guidePostId} onTownExplored={markExplored} season={season} activePostId={selectedPostId} hoveredPostId={touchPostId ?? hoveredPostId} query={query} category={highlightCategory} tag={highlightTag} categoryPreview={Boolean(previewCategory)} tagPreview={Boolean(previewTag)} colorMode={colorMode} reducedMotion={reducedMotion} onHoverPost={onHoverPost} onResolvePostAnchor={onResolvePostAnchor} onSelectPost={selectScenePost} hoveredPost={hoveredPost} hoverAnchor={hoverAnchor} touchPost={touchPost} touchPlaceId={touchPlaceId} onCloseTouchPreview={() => setTouchTarget(undefined)} />
           <p className="mobile-town-hint">点击建筑预览，再次点击或选择「阅读文章」打开；单指任意方向拖动小镇，双指捏合缩放。在小镇外滑动可浏览页面。</p>
           <div className="town-mobile-support">
             <div className="town-caption"><span><i className="caption-dot" /> {siteConfig.title} · {SEASON_PROFILES[season].label}季小镇</span><span>建筑即文章 / {layout?.plots.length ?? 0} buildings / {posts.length} article floors</span><span className="caption-spacer" /><a href="/posts/" onClick={(event) => handleInternalClick(event, () => navigate('archive'))}>打开完整档案 {icon('arrow')}</a></div>
@@ -650,15 +667,17 @@ function SearchDropdown({ results, activeIndex, onHover, onOpen, onArchive, stat
 
 function PlaceTooltip({ id, anchor, layout }: { id?: string; anchor?: SceneAnchor; layout?: TownLayout }) {
   if (!id || !anchor || !Number.isFinite(anchor.x) || !Number.isFinite(anchor.y)) return null;
-  const friend = friendLinks.find(friend => `friend:${friend.id}` === id);
-  const feature = layout?.features?.find(feature => feature.id === id);
-  if (!friend && !feature) return null;
   const width = 260;
   const left = Math.max(12, Math.min(anchor.x + 16, window.innerWidth - width - 12));
   const top = Math.max(76, Math.min(anchor.y + 16, window.innerHeight - 170));
-  return <div className="town-tooltip town-place-tooltip" role="status" style={{ left, top }}>
-    {friend ? <><div className="place-tooltip-heading"><img src={friend.avatar} alt="" /><strong>{friend.nickname}</strong></div>{friend.description && <p>{friend.description}</p>}</> : <><strong>{feature!.title}</strong><p>{feature!.summary}</p></>}
-  </div>;
+  return <div className="town-tooltip town-place-tooltip" role="status" style={{ left, top }}><PlaceSummary id={id} layout={layout} /></div>;
+}
+
+function PlaceSummary({ id, layout }: { id: string; layout?: TownLayout }) {
+  const friend = friendLinks.find(friend => `friend:${friend.id}` === id);
+  const feature = layout?.features?.find(feature => feature.id === id);
+  if (!friend && !feature) return null;
+  return friend ? <><div className="place-tooltip-heading"><img src={friend.avatar} alt="" /><strong>{friend.nickname}</strong></div>{friend.description && <p>{friend.description}</p>}</> : <><strong>{feature!.title}</strong><p>{feature!.summary}</p></>;
 }
 
 function TownTooltip({ post, anchor }: { post?: TownPostSummary; anchor?: SceneAnchor }) { if (!post || !anchor) return null; const position = anchor; return <div className="town-tooltip" style={{ left: position.x, top: position.y }}><div className="tooltip-meta"><span>{post.category}</span><span>{post.readingTime} min</span></div><strong>{post.title}</strong><p>{post.description}</p><div className="tooltip-tags">{post.tags.slice(0, 3).map((tag) => <span key={tag}>#{tag}</span>)}</div></div>; }

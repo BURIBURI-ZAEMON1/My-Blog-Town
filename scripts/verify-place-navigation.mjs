@@ -62,17 +62,23 @@ function assertArrival(result, id) {
   const start = result.samples[0], end = result.final;
   assert(Math.hypot(+start.cameraX - +end.cameraX, +start.cameraZ - +end.cameraZ) > .1 || Math.abs(+start.zoom - +end.zoom) > .01, 'camera did not move');
 }
-async function clickModel(page, point, name) {
+async function modelPoint(page, point, name) {
   const canvas = page.locator('canvas');
   const p = project(point, await canvas.boundingBox(), await canvas.evaluate(el => ({ ...el.dataset })));
   for (const y of [0, -12, 12, -24, 24]) for (const x of [0, -10, 10]) {
     await page.mouse.move(p.x + x, p.y + y);
     await page.waitForTimeout(90);
     if (await page.locator('.town-place-tooltip strong').filter({ hasText: name }).count()) {
-      await page.mouse.click(p.x + x, p.y + y); return;
+      const result = { x: p.x + x, y: p.y + y };
+      await page.mouse.move(0, 0);
+      return result;
     }
   }
   throw new Error(`Could not pick visible model: ${name}`);
+}
+async function clickModel(page, point, name) {
+  const p = await modelPoint(page, point, name);
+  await page.mouse.click(p.x, p.y);
 }
 try {
   const context = await browser.newContext({ viewport: { width: 1100, height: 760 } });
@@ -293,6 +299,50 @@ try {
   await phone.locator('.about-page').waitFor();
   await phone.goBack(); await ready(phone);
   assert.deepEqual(await camera(phone), mobileDeparture, 'mobile About returned to the wrong camera pose');
+  const windmill = await modelPoint(phone, { x: 0, y: 1.2, z: 0 }, '关于');
+  const tapWindmill = () => phone.touchscreen.tap(windmill.x, windmill.y);
+  await tapWindmill();
+  await phone.locator('.town-touch-preview strong').filter({ hasText: '关于' }).waitFor();
+  assert.equal(new URL(phone.url()).pathname, '/', 'first windmill tap navigated instead of previewing');
+  await phone.screenshot({ path: '/tmp/town-touch-windmill.png' });
+  await phone.getByRole('button', { name: '关闭建筑预览' }).tap();
+  await tapWindmill();
+  await phone.locator('.town-touch-preview strong').filter({ hasText: '关于' }).waitFor();
+  assert.equal(new URL(phone.url()).pathname, '/', 'closing the preview did not reset the first tap');
+  await tapWindmill();
+  await phone.waitForURL('**/about/');
+  await phone.goBack(); await ready(phone);
+  // Zoom out so the outer friend ring is visible on a narrow canvas.
+  await phone.locator('canvas').dispatchEvent('wheel', { deltaY: 900 });
+  await phone.waitForTimeout(300);
+  const touchClient = await mobile.newCDPSession(phone);
+  for (let i = 0; i < 8; i++) {
+    const canvas = phone.locator('canvas');
+    const box = await canvas.boundingBox();
+    const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const point = project({ x: hut.x, y: .7, z: hut.z }, box, await canvas.evaluate(el => ({ ...el.dataset })));
+    if (Math.hypot(point.x - center.x, point.y - center.y) < 50) break;
+    const dx = Math.max(-130, Math.min(130, center.x - point.x));
+    const dy = Math.max(-130, Math.min(130, center.y - point.y));
+    await touchClient.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...center }] });
+    for (let step = 1; step <= 6; step++) await touchClient.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: center.x + dx * step / 6, y: center.y + dy * step / 6 }] });
+    await touchClient.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  }
+  const friendPoint = await modelPoint(phone, { x: hut.x, y: .7, z: hut.z }, friendName);
+  const tapFriend = () => phone.touchscreen.tap(friendPoint.x, friendPoint.y);
+  await tapFriend();
+  await phone.locator('.town-touch-preview strong').filter({ hasText: friendName }).waitFor();
+  assert.equal(mobile.pages().length, 1, 'first friend tap opened a tab instead of previewing');
+  assert.equal(await phone.locator('.town-touch-preview a').count(), 0, 'friend preview added an unwanted visit link');
+  await phone.screenshot({ path: '/tmp/town-touch-friend.png' });
+  popupPromise = phone.waitForEvent('popup');
+  await tapFriend();
+  popup = await popupPromise;
+  await popup.getByRole('heading', { name: 'Mobile friend reached' }).waitFor();
+  assert.equal(new URL(phone.url()).pathname, '/');
+  assert.equal(await phone.locator('.town-touch-preview').count(), 0, 'friend preview stayed selected after opening');
+  await popup.close();
+  console.log('PASS: mobile windmill/friend meshes preview on first tap and navigate on second; close resets the preview and friends open in a new tab');
   await mobile.close();
   assert.deepEqual(errors, []);
 } finally { projectionEngine.dispose(); await browser.close(); }
