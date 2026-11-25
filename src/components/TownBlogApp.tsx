@@ -1,7 +1,7 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ElementType } from 'react';
 import type { SceneAnchor, TownPostSummary, TownSceneHandle } from './TownScene';
-import type { SearchEntry } from '../scene/brick-town/types';
+import type { SearchEntry, TownCameraPose, TownSceneProps } from '../scene/brick-town/types';
 import type { ArticleSection } from '../lib/markdown';
 import TownLoading from './TownLoading';
 import SidebarImage from './SidebarImage';
@@ -13,7 +13,6 @@ import { useTownNavigation, type MainSurface, type TownNavigation } from './useT
 import { useNewPostIds } from './useNewPostIds';
 import { useTownExploration } from './useTownExploration';
 import { useColorMode } from './useColorMode';
-import type { TownSceneProps } from '../scene/brick-town/types';
 import AboutView from './AboutView';
 import { usePageViews } from './useViewCounts';
 import { friendLinks, siteConfig, type FriendLink } from '../config/site';
@@ -146,8 +145,9 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
   const contentCache = useRef(contentById);
   const contentRequests = useRef(new Map<string, Promise<ArticleSection[]>>());
   const townSceneRef = useRef<TownSceneHandle | null>(null);
-  const pendingArticle = useRef<string | undefined>(undefined);
-  const pendingPlace = useRef<string | undefined>(undefined);
+  const pendingArticle = useRef<{ id: string; camera?: TownCameraPose } | undefined>(undefined);
+  const pendingPlace = useRef<{ id: string; camera?: TownCameraPose; restoreView?: () => void } | undefined>(undefined);
+  const getTownCamera = useCallback(() => pendingArticle.current?.camera ?? pendingPlace.current?.camera ?? townSceneRef.current?.getCameraPose(), []);
   const [blockedFriend, setBlockedFriend] = useState<FriendLink>();
   const [hoveredPlaceId, setHoveredPlaceId] = useState<string>();
   const [placeAnchor, setPlaceAnchor] = useState<SceneAnchor>();
@@ -216,7 +216,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
   const inputRef = useRef<HTMLInputElement>(null);
   const searchIme = useRef({ composing: false, endedAt: -Infinity });
   const mainSurfaceRef = useRef<HTMLDivElement>(null);
-  const { navigation, navigate: navigateTo } = useTownNavigation(posts, mainSurfaceRef, initialSurface, initialPost?.id);
+  const { navigation, navigate: navigateTo } = useTownNavigation(posts, mainSurfaceRef, getTownCamera, initialSurface, initialPost?.id);
   const { surface, postId: selectedPostId } = navigation;
   const viewPath = surface === 'article' && selectedPostId ? `/posts/${encodeURIComponent(selectedPostId)}/` : surface === 'archive' ? '/posts/' : surface === 'about' ? '/about/' : '/';
   const viewSnapshot = usePageViews(viewPath);
@@ -372,8 +372,9 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
 
   const cancelPlace = () => { pendingPlace.current = undefined; setBlockedFriend(undefined); };
   const finishPlace = () => {
-    const id = pendingPlace.current;
-    pendingPlace.current = undefined;
+    const entry = pendingPlace.current;
+    if (!entry) return;
+    const { id, restoreView } = entry;
     if (id === 'about') navigateTo('about');
     else {
       const friend = friendLinks.find(friend => `friend:${friend.id}` === id);
@@ -381,40 +382,49 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
         const target = window.open(friend.url, '_blank');
         if (target) target.opener = null;
         else setBlockedFriend(friend);
+        restoreView?.();
       }
     }
+    pendingPlace.current = undefined;
   };
   const focusPlace = () => {
-    const id = pendingPlace.current;
-    if (id) townSceneRef.current?.focusPlace(id, finishPlace, cancelPlace);
+    const entry = pendingPlace.current;
+    if (entry) townSceneRef.current?.focusPlace(entry.id, finishPlace, cancelPlace);
   };
   const selectPlace = (id: string) => {
     if (id === 'about' && surface === 'about') { setMobileSidebarOpen(false); return; }
     if (id !== 'about' && !friendLinks.some(friend => `friend:${friend.id}` === id)) return;
+    const fromTown = surface === 'town' && window.location.pathname === '/';
+    const camera = fromTown ? getTownCamera() : undefined;
+    const restoreView = camera && id !== 'about' ? pendingPlace.current?.restoreView ?? townSceneRef.current?.captureReturnView(camera) : undefined;
+    const entry = { id, camera, restoreView };
     pendingArticle.current = undefined;
     townSceneRef.current?.cancelFocus();
-    pendingPlace.current = id;
+    pendingPlace.current = entry;
     setBlockedFriend(undefined);
     setMobileSidebarOpen(false);
     setHoveredPlaceId(undefined);
     setPlaceAnchor(undefined);
-    if (surface !== 'town' || window.location.pathname !== '/' || window.matchMedia('(max-width: 720px), (prefers-reduced-motion: reduce)').matches) { finishPlace(); return; }
+    if (!fromTown || window.matchMedia('(max-width: 720px), (prefers-reduced-motion: reduce)').matches) { finishPlace(); return; }
     mainSurfaceRef.current?.scrollTo({ top: 0, behavior: 'instant' });
-    window.requestAnimationFrame(focusPlace);
+    window.requestAnimationFrame(() => { if (pendingPlace.current === entry) focusPlace(); });
   };
 
   const navigate = (nextSurface: MainSurface, postId?: string) => {
     cancelPlace();
-    pendingArticle.current = undefined;
     townSceneRef.current?.cancelFocus();
     setMobileSidebarOpen(false);
     setTouchPostId(undefined);
     setSearchOpen(false);
     inputRef.current?.blur();
     navigateTo(nextSurface, postId);
+    pendingArticle.current = undefined;
   };
 
   const openArticle = (id: string) => {
+    // History changes before React commits; a late click must not restart a departing town.
+    const fromTown = surface === 'town' && window.location.pathname === '/';
+    const entry = { id, camera: fromTown ? getTownCamera() : undefined };
     cancelPlace();
     void loadArticle(id).catch(() => {});
     setPreviewCategory(undefined);
@@ -423,15 +433,14 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     setHoverAnchor(undefined);
     setSearchOpen(false);
     inputRef.current?.blur();
-    pendingArticle.current = id;
-    const enter = () => { if (pendingArticle.current === id) navigate('article', id); };
-    // History changes before React commits; a late click must not restart a departing town.
-    if (surface === 'town' && window.location.pathname === '/' && !window.matchMedia('(max-width: 720px), (prefers-reduced-motion: reduce)').matches && townSceneRef.current?.focusPost(id, enter)) return;
+    pendingArticle.current = entry;
+    const enter = () => { if (pendingArticle.current === entry) navigate('article', id); };
+    if (fromTown && !window.matchMedia('(max-width: 720px), (prefers-reduced-motion: reduce)').matches && townSceneRef.current?.focusPost(id, enter)) return;
     enter();
   };
 
   useEffect(() => {
-    if ((isMobile || reducedMotion) && pendingArticle.current) navigate('article', pendingArticle.current);
+    if ((isMobile || reducedMotion) && pendingArticle.current) navigate('article', pendingArticle.current.id);
   }, [isMobile, reducedMotion]);
 
   const chooseCategory = (category?: string) => {
@@ -606,7 +615,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
         <div className="main-scroll" ref={mainSurfaceRef}>
         {surface === 'town' && <section className="town-home">
           <h1 className="visually-hidden">{siteConfig.title} — {siteConfig.tagline}</h1>
-          <TownStage onSceneError={finishPlace} onSceneReady={focusPlace} hoveredPlaceId={hoveredPlaceId} onHoverPlace={(id, anchor) => { setHoveredPlaceId(id); setPlaceAnchor(anchor); }} onResolvePlaceAnchor={(id, anchor) => { if (id === hoveredPlaceId) setPlaceAnchor(anchor); }} onSelectPlace={selectPlace} sceneRef={townSceneRef} posts={posts} layout={layout} newPostIds={newPostIds} guidePostId={guidePostId} onTownExplored={markExplored} season={season} activePostId={selectedPostId} hoveredPostId={touchPostId ?? hoveredPostId} query={query} category={highlightCategory} tag={highlightTag} categoryPreview={Boolean(previewCategory)} tagPreview={Boolean(previewTag)} colorMode={colorMode} reducedMotion={reducedMotion} onHoverPost={onHoverPost} onResolvePostAnchor={onResolvePostAnchor} onSelectPost={selectScenePost} hoveredPost={hoveredPost} hoverAnchor={hoverAnchor} touchPost={touchPost} onCloseTouchPreview={() => setTouchPostId(undefined)} />
+          <TownStage initialCamera={navigation.restore?.camera} onSceneError={finishPlace} onSceneReady={focusPlace} hoveredPlaceId={hoveredPlaceId} onHoverPlace={(id, anchor) => { setHoveredPlaceId(id); setPlaceAnchor(anchor); }} onResolvePlaceAnchor={(id, anchor) => { if (id === hoveredPlaceId) setPlaceAnchor(anchor); }} onSelectPlace={selectPlace} sceneRef={townSceneRef} posts={posts} layout={layout} newPostIds={newPostIds} guidePostId={guidePostId} onTownExplored={markExplored} season={season} activePostId={selectedPostId} hoveredPostId={touchPostId ?? hoveredPostId} query={query} category={highlightCategory} tag={highlightTag} categoryPreview={Boolean(previewCategory)} tagPreview={Boolean(previewTag)} colorMode={colorMode} reducedMotion={reducedMotion} onHoverPost={onHoverPost} onResolvePostAnchor={onResolvePostAnchor} onSelectPost={selectScenePost} hoveredPost={hoveredPost} hoverAnchor={hoverAnchor} touchPost={touchPost} onCloseTouchPreview={() => setTouchPostId(undefined)} />
           <p className="mobile-town-hint">点击建筑预览，再次点击或选择「阅读文章」打开；单指任意方向拖动小镇，双指捏合缩放。在小镇外滑动可浏览页面。</p>
           <div className="town-mobile-support">
             <div className="town-caption"><span><i className="caption-dot" /> {siteConfig.title} · {SEASON_PROFILES[season].label}季小镇</span><span>建筑即文章 / {layout?.plots.length ?? 0} buildings / {posts.length} article floors</span><span className="caption-spacer" /><a href="/posts/" onClick={(event) => handleInternalClick(event, () => navigate('archive'))}>打开完整档案 {icon('arrow')}</a></div>

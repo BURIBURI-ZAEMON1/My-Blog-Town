@@ -122,6 +122,7 @@ for(let x=-3;x<=3;x++)for(let y=-3;y<=3;y++){
   fullyPanned.retarget(view,0,false,false);fullyPanned.tick(.5);
 }
 assert(fullyPanned.progress.every(progress=>progress===1),'pan fixture did not reveal the whole town');
+const pannedFootprint=fullyPanned.data.slice(),restorePannedFootprint=fullyPanned.saveFootprint();
 fullyPanned.retarget(highEdge,0,true,false);fullyPanned.tick(0);
 assert(fullyPanned.data.every((value,i)=>i%4!==0||value===255),'pull-back immediately cut the fully revealed town');
 approachReference.retarget(edgeMatrix,0,true,false,false,true);
@@ -134,6 +135,11 @@ for(const seconds of [.06,.12]){
 fullyPanned.tick(.2);
 assert.equal(fullyPanned.animating,false);assert.equal(fullyPanned.visibility(0,0),1);
 assert.equal(fullyPanned.visibility(50.4,0),0,'fully panned edges did not disappear after landing');
+fullyPanned.retarget(edgeMatrix,0,true,false,false,true);
+assert(fullyPanned.animating,'restore fixture has no motion to cancel');
+restorePannedFootprint();
+assert.equal(fullyPanned.tick(.5),false,'restored footprint replayed a transition');
+assert.deepEqual(fullyPanned.data,pannedFootprint,'restore lost bricks discovered by panning');
 const edgeShader=readFileSync('src/scene/brick-town/edge-reveal.ts','utf8');
 assert(!edgeShader.includes('finalColor.rgb = mix'),'persistent background-color fog returned');
 assert.deepEqual(BOARD,townBoard,'Babylon world and mini-map use different coordinate bounds');

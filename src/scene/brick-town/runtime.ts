@@ -27,7 +27,7 @@ import { createPostNoticeProjector } from './post-notices';
 import type { PostNoticeFrame } from '../../data/town-post-notices';
 import type { TownLayout } from '../../data/town-layout';
 import { clampToTownTerrain, townTerrainBounds } from '../../data/town-outline';
-import type { TownSceneProps } from './types';
+import type { TownCameraPose, TownSceneProps } from './types';
 import { ARTICLE_FOCUS_MS, clampToPanBounds, getArticleFocusPose, getCameraPanBounds, getDragPanDelta } from './view';
 import { configureTownEdgeShadows, edgeCloseAmount, TownEdgeField, townEdgeState, worldEdgeVisibility } from './edge-reveal';
 
@@ -43,7 +43,7 @@ const contactShadowModule=typeof window!=='undefined'&&window.innerWidth>=720
   ? import('./desktop-pipeline').catch(()=>undefined)
   : undefined;
 
-export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:TownSceneProps['posts'],initial:SceneState,callbacks:()=>SceneCallbacks,onFirstFrame?:()=>void) {
+export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:TownSceneProps['posts'],initial:SceneState & Pick<TownSceneProps,'initialCamera'>,callbacks:()=>SceneCallbacks,onFirstFrame?:()=>void) {
   const buildStarted=performance.now();
   const mobile=canvas.clientWidth<720;
   const engine=new Engine(canvas,true,{stencil:true,preserveDrawingBuffer:false,powerPreference:'default'});
@@ -73,13 +73,16 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   scene.imageProcessingConfiguration.toneMappingEnabled=true;
   scene.imageProcessingConfiguration.toneMappingType=ImageProcessingConfiguration.TONEMAPPING_ACES;
   scene.imageProcessingConfiguration.contrast=1.06;
-  const camera=new ArcRotateCamera('diorama-camera',Math.PI*0.68,0.96,36,new Vector3(0,0.2,0),scene);
+  const saved=initial.initialCamera;
+  const camera=new ArcRotateCamera('diorama-camera',Math.PI*0.68,0.96,36,new Vector3(saved?.x??0,saved?.y??0.2,saved?.z??0),scene);
   camera.mode=Camera.ORTHOGRAPHIC_CAMERA;
   camera.minZ=0.1;camera.maxZ=160;
   // Deliberate fixed composition keeps the article frontage readable. Zoom is
   // explicit; a click/touch never gets confused with an orbit gesture.
   const defaultZoom=mobile?1:1.9;
-  let zoom=defaultZoom;
+  const clampZoom=(value:number)=>Math.max(0.75,Math.min(2.6,value));
+  let zoom=clampZoom(saved?.zoom??defaultZoom);
+  const getCameraPose=():TownCameraPose=>({x:camera.target.x,y:camera.target.y,z:camera.target.z,zoom});
   const edgeState=townEdgeState(scene);
   edgeState.close=0;edgeState.lift=initial.reducedMotion?0:1;
   const clampCameraTarget=()=>{
@@ -306,7 +309,6 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   let lastHover:string|undefined,lastPickAt=0;
   const pointers=new Map<number,{x:number;y:number;type:string}>();
   let pinch:{startDistance:number;startZoom:number;moved:boolean}|undefined;
-  const clampZoom=(value:number)=>Math.max(0.75,Math.min(2.6,value));
   const distanceBetween=(a:{x:number;y:number},b:{x:number;y:number})=>Math.hypot(a.x-b.x,a.y-b.y);
   const applyZoom=(nextZoom:number)=>{
     const clamped=clampZoom(nextZoom);if(Math.abs(clamped-zoom)<0.0001)return;
@@ -319,12 +321,12 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     camera.orthoBottom=centerY+(camera.orthoBottom!-centerY)*scale;
     zoom=clamped;clampCameraTarget();requestDraw();
   };
-  let focusFlight: { from: { x:number; y:number; z:number; zoom:number }; to: Vector3; started:number; onComplete:()=>void; onCancel?:()=>void } | undefined;
+  let focusFlight: { from: TownCameraPose; to: Vector3; started:number; onComplete:()=>void; onCancel?:()=>void } | undefined;
   function cancelFocus(){if(!focusFlight)return;const cancel=focusFlight.onCancel;focusFlight=undefined;delete canvas.dataset.focusPost;delete canvas.dataset.focusProgress;cancel?.();}
   function focusTarget(id:string,to:Vector3,onComplete:()=>void,onCancel?:()=>void){
     if(disposed||!inView||!visible||!firstFramePublished)return false;
     cancelFocus();
-    focusFlight={from:{x:camera.target.x,y:camera.target.y,z:camera.target.z,zoom},to,started:performance.now(),onComplete,onCancel};
+    focusFlight={from:getCameraPose(),to,started:performance.now(),onComplete,onCancel};
     canvas.dataset.focusPost=id;canvas.dataset.focusProgress='0';
     canvas.dataset.focusDurationMs=String(ARTICLE_FOCUS_MS);
     clearHover();requestDraw();
@@ -446,6 +448,21 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   let edgeHighlightSignature='';
   const edgeTransform=Matrix.Zero();
   let edgeZoom=zoom,edgeInitialized=false,edgeWasReduced=state.reducedMotion;
+  let restoreEdge: ((transform: Matrix) => boolean) | undefined;
+  function captureReturnView(pose:TownCameraPose){
+    const projection=edgeTransform.clone(), restoreFootprint=edgeState.field.saveFootprint();
+    return ()=>{
+      applyZoom(pose.zoom);
+      camera.target.set(pose.x,pose.y,pose.z);
+      clampCameraTarget();
+      delete canvas.dataset.focusPost;delete canvas.dataset.focusProgress;
+      restoreEdge=(transform)=>{
+        if(!transform.m.every((value,i)=>Math.abs(value-projection.m[i])<1e-6))return false;
+        restoreFootprint();return true;
+      };
+      requestDraw();
+    };
+  }
   function publishDiagnostics(now:number){
     canvas.dataset.ready='true';canvas.dataset.frames=String(frames);canvas.dataset.weather=rainy?weather.kind:'clear';canvas.dataset.season=state.season;canvas.dataset.colorMode=state.colorMode;canvas.dataset.reducedMotion=String(state.reducedMotion);canvas.dataset.seasonChanges=String(seasonChanges);canvas.dataset.seasonCover=String(seasons.coverCount);canvas.dataset.seasonTransition=String(seasons.transitioning);canvas.dataset.precipitationAnimated=String(weather.animated);canvas.dataset.renderer=engine.webGLVersion===2?'webgl2':'webgl1';
     canvas.dataset.cameraX=camera.target.x.toFixed(2);canvas.dataset.cameraY=camera.target.y.toFixed(2);canvas.dataset.cameraZ=camera.target.z.toFixed(2);canvas.dataset.zoom=zoom.toFixed(3);canvas.dataset.rainDrops=String(weather.count);
@@ -484,12 +501,15 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     const edgeRevision=edgeState.field.revision;
     // Advance existing motion before assigning new targets, so the elapsed
     // time before a zoom cannot consume its entire retreat on the first frame.
-    let edgeMoved=edgeState.field.tick(Math.min(.05,frameSeconds),state.reducedMotion);
-    const edgeChanged=!edgeInitialized||edgeZoom!==zoom||!transform.equals(edgeTransform);
+    let edgeMoved=!restoreEdge&&edgeState.field.tick(Math.min(.05,frameSeconds),state.reducedMotion);
+    const edgeChanged=!!restoreEdge||!edgeInitialized||edgeZoom!==zoom||!transform.equals(edgeTransform);
     if(edgeChanged){
-      // Panning can discover new ground, but never withdraws an already revealed
-      // piece. Both zoom directions settle into the same solid brick footprint.
-      edgeState.field.retarget(transform.m,edgeState.inset,zoom!==edgeZoom,state.reducedMotion||!edgeInitialized,!edgeInitialized,edgeInitialized&&zoom>edgeZoom,[1-.08*portraitEdge,1+.12*portraitEdge]);
+      if(!restoreEdge?.(transform)){
+        // If the projection changed while away, fit its new footprint before drawing.
+        const initial=!edgeInitialized||!!restoreEdge;
+        edgeState.field.retarget(transform.m,edgeState.inset,zoom!==edgeZoom,state.reducedMotion||initial,initial,!initial&&zoom>edgeZoom,[1-.08*portraitEdge,1+.12*portraitEdge]);
+      }
+      restoreEdge=undefined;
       edgeTransform.copyFrom(transform);edgeZoom=zoom;edgeInitialized=true;
       edgeMoved=edgeState.field.tick(0,state.reducedMotion)||edgeMoved;
     }
@@ -547,7 +567,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   const onVisibility=()=>{visible=!document.hidden;syncVisibility();if(!visible&&focusFlight){const complete=focusFlight.onCancel?undefined:focusFlight.onComplete;cancelFocus();complete?.();}};document.addEventListener('visibilitychange',onVisibility);
   engine.runRenderLoop(render);
   return {
-    update,anchor,focusPost,focusPlace,cancelFocus,
+    update,anchor,getCameraPose,captureReturnView,focusPost,focusPlace,cancelFocus,
     dispose(){cancelFocus();disposed=true;window.clearTimeout(weatherWakeTimer);engine.stopRenderLoop(render);resize.disconnect();observer.disconnect();document.removeEventListener('visibilitychange',onVisibility);canvas.removeEventListener('wheel',onWheel);canvas.removeEventListener('pointermove',onMove);canvas.removeEventListener('pointerleave',onLeave);canvas.removeEventListener('pointerdown',onDown);canvas.removeEventListener('pointerup',onUp);canvas.removeEventListener('pointercancel',onCancel);pointers.clear();pinch=undefined;down=undefined;ao?.dispose();seasons.dispose();weather.dispose();scene.dispose();engine.dispose();},
   };
 }

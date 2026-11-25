@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 import { NullEngine, Scene, ArcRotateCamera, Camera, Vector3, Matrix } from '@babylonjs/core';
 
 const base = process.env.TOWN_BLOG_TEST_URL ?? 'http://127.0.0.1:4325';
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || undefined });
 const errors = [];
 const projectionEngine = new NullEngine();
 function project(point, box, data) {
@@ -27,12 +27,32 @@ async function ready(page) {
 async function observe(page) {
   await page.evaluate(() => {
     const canvas = document.querySelector('canvas');
-    window.placeFlight = { canvas, samples: [] };
-    new MutationObserver(() => { if (canvas.dataset.focusPost) window.placeFlight.samples.push({ ...canvas.dataset }); }).observe(canvas, { attributes: true });
+    const pose = ['cameraX', 'cameraY', 'cameraZ', 'zoom'];
+    const departure = pose.map(key => canvas.dataset[key]);
+    const flight = window.placeFlight = { canvas, samples: [] };
+    new MutationObserver(() => {
+      const data = canvas.dataset;
+      if (data.focusPost) flight.samples.push({ ...data });
+      if (flight.atOpen && !flight.firstReturn && data.frames !== flight.atOpen.frames && pose.every((key, i) => data[key] === departure[i])) {
+        flight.firstReturn = { ...data };
+      }
+    }).observe(canvas, { attributes: true });
   });
 }
-async function flightResult(page) {
-  return page.evaluate(() => ({ samples: window.placeFlight.samples, final: { ...window.placeFlight.canvas.dataset } }));
+async function flightResult(page, popup = false) {
+  return page.evaluate(atOpen => ({ samples: window.placeFlight.samples, final: atOpen ? window.placeFlight.atOpen : { ...window.placeFlight.canvas.dataset } }), popup);
+}
+const camera = (page) => page.locator('.brick-town-host canvas').evaluate(({ dataset: d }) => [d.cameraX, d.cameraY, d.cameraZ, d.zoom]);
+async function assertFriendReturn(page, expected) {
+  await page.bringToFront();
+  await page.waitForFunction(pose => {
+    const canvas = document.querySelector('.brick-town-host canvas');
+    if (canvas !== window.placeFlight.canvas) return false;
+    const d = canvas.dataset;
+    return [d.cameraX, d.cameraY, d.cameraZ, d.zoom].every((value, index) => value === pose[index]);
+  }, expected, { timeout: 5000 });
+  const flight = await page.evaluate(() => ({ opened: !!window.placeFlight.atOpen, animating: window.placeFlight.firstReturn?.edgeAnimating }));
+  if (flight.opened) assert.equal(flight.animating, 'false', 'first frame back replayed the friend close-up edge animation');
 }
 function assertArrival(result, id) {
   assert.equal(result.final.focusPost, id);
@@ -66,6 +86,11 @@ try {
     history.pushState = function (...args) {
       window.placeRoutes.push(new URL(args[2], location.href).pathname);
       return pushState.apply(this, args);
+    };
+    const open = window.open;
+    window.open = function (...args) {
+      if (window.placeFlight) window.placeFlight.atOpen = { ...window.placeFlight.canvas.dataset };
+      return open.apply(this, args);
     };
   });
   await page.goto(`${base}/posts/`);
@@ -125,15 +150,22 @@ try {
   await page.waitForURL('**/about/');
   console.log('PASS: keyboard avatar navigation from archive');
   await page.locator('.desktop-top-links a[href="/"]').click(); await ready(page);
+  const defaultZoom = (await camera(page))[3];
+  await page.locator('.brick-town-host canvas').dispatchEvent('wheel', { deltaY: 200 });
+  await page.waitForFunction(zoom => document.querySelector('canvas').dataset.zoom !== zoom, defaultZoom);
+  const aboutDeparture = await camera(page);
   await observe(page);
   await page.locator('.desktop-top-links a[href="/about/"]').click();
-  assert((await flightResult(page)).samples.some(sample => +sample.focusProgress < 1), 'About link skipped the camera');
   await page.waitForURL('**/about/'); assertArrival(await flightResult(page), 'about');
   assert.match(await page.title(), /关于/);
   assert.equal(await page.locator('.about-card').count(), 4);
   assert.equal(await page.locator('.about-page aside, .about-page .article-comments').count(), 0);
   await page.screenshot({ path: '/tmp/about-fixed-desktop.png' });
-  console.log('PASS: desktop About entry flies to windmill before navigation; reference layout has no contents/comments');
+  assert.equal(await page.locator('canvas').count(), 0, 'About kept the 3D scene mounted');
+  await page.goBack(); await ready(page);
+  assert.deepEqual(await camera(page), aboutDeparture, 'About returned to the wrong camera pose');
+  await page.goForward(); await page.locator('.about-page').waitFor();
+  console.log('PASS: About plays the windmill flight, disposes the scene, and restores the departure camera on back');
 
   // About from archive must skip the town entirely.
   await page.locator('.desktop-top-links a[href="/posts/"]').click();
@@ -153,11 +185,8 @@ try {
   const friendUrl = await friend.getAttribute('href');
   const friendName = await friend.locator('strong').innerText();
   const friendId = `friend:${layout.hamlet.huts[3].id}`;
-  let externalFlight;
-  await context.route(`${friendUrl}/**`, async route => {
-    externalFlight = await flightResult(page);
-    await route.fulfill({ contentType: 'text/html', body: '<h1>Friend destination reached</h1>' });
-  });
+  await context.route(`${friendUrl}/**`, route => route.fulfill({ contentType: 'text/html', body: '<h1>Friend destination reached</h1>' }));
+  const friendDeparture = await camera(page);
   await observe(page);
   let popupPromise = page.waitForEvent('popup');
   await friend.click();
@@ -165,24 +194,27 @@ try {
   await popup.getByRole('heading', { name: 'Friend destination reached' }).waitFor();
   assert.equal(new URL(page.url()).origin, new URL(base).origin);
   assert.equal(new URL(popup.url()).origin, new URL(friendUrl).origin);
-  assertArrival(externalFlight, friendId);
+  assertArrival(await flightResult(page, true), friendId);
   await popup.waitForTimeout(300);
   assert(!popup.isClosed(), 'friend destination immediately closed');
   await popup.close();
-  console.log('PASS: friend sidebar waits for camera arrival, opens the configured URL in a new tab, and keeps it open');
+  await assertFriendReturn(page, friendDeparture);
+  console.log('PASS: friend sidebar opens a new tab after arrival, then the existing town canvas resumes the departure pose');
 
   await page.goto(base); await ready(page);
   await page.locator('canvas').hover(); await page.mouse.wheel(0, 760);
   await page.waitForTimeout(1000);
   await page.screenshot({ path: '/tmp/town-fixed-ring.png' });
+  const hutDeparture = await camera(page);
   await observe(page);
   const hut = layout.hamlet.huts[3];
   popupPromise = page.waitForEvent('popup');
   await clickModel(page, { x: hut.x, y: .7, z: hut.z }, friendName);
   popup = await popupPromise;
   await popup.getByRole('heading', { name: 'Friend destination reached' }).waitFor();
-  assertArrival(externalFlight, friendId);
+  assertArrival(await flightResult(page, true), friendId);
   await popup.close();
+  await assertFriendReturn(page, hutDeparture);
   console.log('PASS: real friend hut mesh flies before opening the same URL in a new tab');
 
   await page.goto(base); await ready(page);
@@ -196,6 +228,7 @@ try {
   assert.equal(new URL(page.url()).origin, new URL(base).origin);
   assert.equal(context.pages().length, 1);
   console.log('PASS: Escape cancels friend navigation without opening a tab');
+  const blockedDeparture = await camera(page);
   await observe(page);
   await page.evaluate(() => {
     window.savedOpen = window.open;
@@ -212,6 +245,7 @@ try {
   await fallback.click(); popup = await popupPromise;
   await popup.getByRole('heading', { name: 'Friend destination reached' }).waitFor();
   await popup.close();
+  await assertFriendReturn(page, blockedDeparture);
   console.log('PASS: blocked popups provide a working original link and never replace the current town');
   await context.close();
 
@@ -247,6 +281,18 @@ try {
   assert.equal(new URL(phone.url()).pathname, '/about/', 'mobile friend replaced the current tab');
   assert.equal(await phone.locator('canvas').count(), 0, 'mobile friend needlessly loaded a camera flight');
   console.log('PASS: mobile friend opens a new tab directly and preserves the current About page');
+  await popup.close();
+  await phone.getByRole('button', { name: '打开侧边栏', exact: true }).click();
+  await mobileNav.locator('a[href="/"]').click(); await ready(phone);
+  const mobileZoom = (await camera(phone))[3];
+  await phone.locator('.brick-town-host canvas').dispatchEvent('wheel', { deltaY: -200 });
+  await phone.waitForFunction(zoom => document.querySelector('canvas').dataset.zoom !== zoom, mobileZoom);
+  const mobileDeparture = await camera(phone);
+  await phone.getByRole('button', { name: '打开侧边栏', exact: true }).click();
+  await mobileNav.locator('a[href="/about/"]').click();
+  await phone.locator('.about-page').waitFor();
+  await phone.goBack(); await ready(phone);
+  assert.deepEqual(await camera(phone), mobileDeparture, 'mobile About returned to the wrong camera pose');
   await mobile.close();
   assert.deepEqual(errors, []);
 } finally { projectionEngine.dispose(); await browser.close(); }

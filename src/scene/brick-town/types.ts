@@ -40,10 +40,12 @@ export type TownPost = TownPostSummary & {
 };
 
 export type SceneAnchor = { x: number; y: number };
+export type TownCameraPose = { x: number; y: number; z: number; zoom: number };
 
 export type TownSceneProps = {
   posts: TownPostSummary[];
   layout?: TownLayout;
+  initialCamera?: TownCameraPose;
   activePostId?: string;
   hoveredPostId?: string;
   hoveredPlaceId?: string;

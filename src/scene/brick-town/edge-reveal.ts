@@ -58,6 +58,16 @@ export class TownEdgeField {
       this.owners[i] = owner;
     }
   }
+  saveFootprint() {
+    const targets = this.targets.slice();
+    return () => {
+      this.targets.set(targets);
+      this.progress.set(targets);
+      this.heights.fill(0);
+      this.active.clear();
+      this.write();
+    };
+  }
   retarget(matrix: ArrayLike<number>, inset: number, retract: boolean, immediate: boolean, initial = false, landing = false, screenScale: readonly [number, number] = [1, 1]) {
     const entering: number[] = [];
     for (let i = 0; i < COUNT; i++) {
