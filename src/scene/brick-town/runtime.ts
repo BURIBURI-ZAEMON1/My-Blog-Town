@@ -28,7 +28,7 @@ import type { PostNoticeFrame } from '../../data/town-post-notices';
 import type { TownLayout } from '../../data/town-layout';
 import { clampToTownTerrain, townTerrainBounds } from '../../data/town-outline';
 import type { TownCameraPose, TownSceneProps, TownTarget } from './types';
-import { buildingVisualState, stepBuildingGlass, targetKey, type TownInteractiveBuilding } from './interaction';
+import { targetVisualState, stepGlass, targetKey, type TownInteractiveBuilding, type TownInteractiveTarget } from './interaction';
 import { ARTICLE_FOCUS_MS, clampToPanBounds, getArticleFocusPose, getCameraPanBounds, getDragPanDelta } from './view';
 import { configureTownEdgeShadows, edgeCloseAmount, TownEdgeField, townEdgeState, worldEdgeVisibility } from './edge-reveal';
 
@@ -119,6 +119,8 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,initia
   const shadows=new ShadowGenerator(mobile?512:2048,sun);
   shadows.usePercentageCloserFiltering=!mobile;shadows.filteringQuality=mobile?ShadowGenerator.QUALITY_LOW:ShadowGenerator.QUALITY_MEDIUM;
   shadows.bias=0.00012;shadows.normalBias=0.018;
+  // Glass is an interaction treatment; the buildings keep their physical shadows.
+  shadows.transparencyShadow=true;
   // Cache the static town shadow map; refresh for solar movement and transitions.
   shadows.getShadowMap()!.refreshRate=0;
   if(edgeState)configureTownEdgeShadows(shadows,scene);
@@ -167,7 +169,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,initia
     glow.customEmissiveColorSelector=(mesh,_subMesh,material,result)=>{
       const mat=material as PBRMaterial,point=mesh.getBoundingInfo().boundingBox.centerWorld;
       const target=mesh.metadata?.townTarget as TownTarget|undefined;
-      const building=target&&buildingByTarget.get(targetKey(target));
+      const building=target&&targetByKey.get(targetKey(target))?.building;
       const reveal=worldEdgeVisibility(scene,building?.x??point.x,0,building?.z??point.z);
       const strength=(mat.emissiveIntensity??1)*reveal*(1-(mesh.metadata?.townGlass??0));
       result.set((mat.emissiveColor?.r??0)*strength,(mat.emissiveColor?.g??0)*strength,(mat.emissiveColor?.b??0)*strength,mat.alpha);
@@ -196,20 +198,27 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,initia
       targets:house.ids.map(id=>({kind:'post' as const,id})), x:house.plot.x,z:house.plot.z,
       focusY:GROUND_Y+house.ids.length*FLOOR_HEIGHT*.5,
       anchorY:(target:TownTarget)=>GROUND_Y+(house.ids.indexOf(target.id)+.6)*FLOOR_HEIGHT,
-      meshes:house.meshes,glass:0,glassTarget:0,
+      meshes:house.meshes,
     })),
     ...places.map(place=>({
       targets:[{kind:'place' as const,id:place.id}],x:place.x,z:place.z,
       focusY:GROUND_Y+place.anchorY*.5,anchorY:()=>GROUND_Y+place.anchorY,
-      meshes:place.meshes,glass:0,glassTarget:0,
+      meshes:place.meshes,
     })),
   ];
-  const buildingByTarget=new Map(buildings.flatMap(building=>building.targets.map(target=>[targetKey(target),building] as const)));
+  const targets:TownInteractiveTarget[]=buildings.flatMap(building=>building.targets.map(target=>({target,building,meshes:[],glass:0,glassTarget:0})));
+  const targetByKey=new Map(targets.map(part=>[targetKey(part.target),part]));
   function registerBuildingMeshes(){
     for(const [index,house] of houses.entries())buildings[index].meshes=[...house.meshes,...seasons.articleMeshes.filter(mesh=>house.ids.includes(mesh.metadata.postId))];
+    for(const part of targets)part.meshes=[];
     for(const building of buildings)for(const mesh of building.meshes){
-      mesh.metadata.townTarget=building.targets.find(target=>target.kind==='post'&&target.id===mesh.metadata.postId)??building.targets[0];
-      mesh.metadata.townGlass=building.glass;
+      const target=building.targets.find(target=>target.kind==='post'&&target.id===mesh.metadata.postId)??building.targets[0];
+      const part=targetByKey.get(targetKey(target))!;
+      part.meshes.push(mesh);
+      mesh.metadata.townTarget=target;
+      mesh.metadata.townGlass=part.glass;
+      // One blended shader from the first frame avoids a pipeline swap on deselection.
+      mesh.hasVertexAlpha=true;
     }
   }
   registerBuildingMeshes();
@@ -293,15 +302,13 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,initia
     if(nextHighlightSignature!==highlightSignature){
       const matching=state.matchingPostIds?new Set(state.matchingPostIds):undefined;
       let hasHighlight=false;
-      for(const building of buildings){
-        const visual=buildingVisualState(building,target,matching);
-        building.glassTarget=Number(visual.glass);
+      for(const part of targets){
+        const visual=targetVisualState(part.target,target,matching);
+        part.glassTarget=Number(visual.glass);
+        const {building}=part;
         const revealed=worldEdgeVisibility(scene,building.x,0,building.z)>.01;
-        for(const mesh of building.meshes){
-          const item=mesh.metadata.townTarget as TownTarget;
-          const direct=target&&targetKey(item)===targetKey(target);
-          const matches=item.kind==='post'&&matching?.has(item.id);
-          if((direct||matches)&&revealed){highlights?.addMesh(mesh,color(direct?'#90e3d4':'#edbb53'));hasHighlight=true;}
+        for(const mesh of part.meshes){
+          if((visual.direct||visual.matches)&&revealed){highlights?.addMesh(mesh,color(visual.direct?'#90e3d4':'#edbb53'));hasHighlight=true;}
           else highlights?.removeMesh(mesh);
         }
       }
@@ -312,7 +319,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,initia
     requestDraw();
   }
   function anchorTarget(target:TownTarget){
-    const building=buildingByTarget.get(targetKey(target));if(!building)return;
+    const building=targetByKey.get(targetKey(target))?.building;if(!building)return;
     const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;
     const point=new Vector3(building.x,building.anchorY(target),building.z);
     const p=Vector3.Project(point,Matrix.Identity(),scene.getTransformMatrix(),camera.viewport.toGlobal(engine.getRenderWidth(),engine.getRenderHeight()));
@@ -345,7 +352,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,initia
     cancel?.();
   }
   function focusTarget(target:TownTarget,onComplete:()=>void,onCancel?:()=>void){
-    const building=buildingByTarget.get(targetKey(target));if(!building)return false;
+    const building=targetByKey.get(targetKey(target))?.building;if(!building)return false;
     if(disposed||!inView||!visible||!firstFramePublished||state.reducedMotion)return false;
     cancelFocus();
     flightTarget=target;
@@ -365,7 +372,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,initia
       if(!m.isPickable||!m.isVisible)return false;
       if(m.metadata?.citizen!==undefined)return !state.reducedMotion&&m.visibility>.55;
       const target=m.metadata?.townTarget as TownTarget|undefined;
-      const building=target&&buildingByTarget.get(targetKey(target));
+      const building=target&&targetByKey.get(targetKey(target))?.building;
       return !building||worldEdgeVisibility(scene,building.x,0,building.z)>.2;
     };
     const revealed=(hit:PickingInfo)=>{
@@ -485,8 +492,10 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,initia
     canvas.dataset.edgeReveal=edgeState?edgeCloseAmount(zoom,defaultZoom).toFixed(3):'0.000';
     canvas.dataset.edgeAnimating=String(edgeState?.field.animating??false);
     canvas.dataset.focusTarget=(flightTarget??state.target)?targetKey((flightTarget??state.target)!):'';
-    canvas.dataset.glassBuildings=String(buildings.filter(building=>building.glass>.95).length);
-    canvas.dataset.solidBuildings=String(buildings.filter(building=>building.glass<.01).length);
+    canvas.dataset.glassBuildings=String(buildings.filter(building=>building.targets.every(target=>targetByKey.get(targetKey(target))!.glass>.95)).length);
+    canvas.dataset.solidBuildings=String(buildings.filter(building=>building.targets.some(target=>targetByKey.get(targetKey(target))!.glass<.01)).length);
+    canvas.dataset.glassTargets=targets.filter(part=>part.glass>.95).map(part=>targetKey(part.target)).join(',');
+    canvas.dataset.solidTargets=targets.filter(part=>part.glass<.01).map(part=>targetKey(part.target)).join(',');
     canvas.dataset.matchingPosts=state.matchingPostIds?.join(',')??'';
     canvas.dataset.solarHour=light.hour.toFixed(3);canvas.dataset.townNight=String(townNight);
     canvas.dataset.sunDirection=sun.direction.asArray().map(v=>v.toFixed(4)).join(',');canvas.dataset.sunIntensity=sun.intensity.toFixed(4);
@@ -563,13 +572,12 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,initia
     });
     weather.tick(dt);seasons.tick(dt,state.reducedMotion);
     let glassAnimating=false;
-    for(const building of buildings){
-      building.glass=stepBuildingGlass(building.glass,building.glassTarget,dt,state.reducedMotion);
-      glassAnimating ||= building.glass!==building.glassTarget;
-      for(const mesh of building.meshes){
-        mesh.metadata.townGlass=building.glass;
-        const seasonalOpacity=mesh.metadata.seasonal?seasons.opacity:1;
-        mesh.visibility=seasonalOpacity*(1-.7*building.glass);
+    for(const part of targets){
+      part.glass=stepGlass(part.glass,part.glassTarget,dt,state.reducedMotion);
+      glassAnimating ||= part.glass!==part.glassTarget;
+      for(const mesh of part.meshes){
+        mesh.metadata.townGlass=part.glass;
+        if(mesh.metadata.seasonal)mesh.visibility=seasons.opacity;
       }
     }
     if(state.season!=='winter')for(const m of world.glints)m.visibility=daylightStep(.05,.8,sun.intensity)*(state.reducedMotion?.65:.65+Math.sin(elapsed*1.5)*.15);

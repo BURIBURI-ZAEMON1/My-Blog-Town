@@ -13,19 +13,25 @@ export class TownFocusMaterial extends MaterialPluginBase {
     this._enable(true);
   }
   getUniforms() {
-    return { ubo: [{ name: 'townGlass', size: 1, type: 'float' }], fragment: 'uniform float townGlass;' };
+    return { ubo: [{ name: 'townGlass', size: 2, type: 'vec2' }], fragment: 'uniform vec2 townGlass;' };
   }
-  hardBindForSubMesh(buffer: UniformBuffer, _scene: Scene, _engine: AbstractEngine, subMesh: SubMesh) {
-    buffer.updateFloat('townGlass', subMesh.getRenderingMesh().metadata?.townGlass ?? 0);
+  hardBindForSubMesh(buffer: UniformBuffer, _scene: Scene, engine: AbstractEngine, subMesh: SubMesh) {
+    const data = subMesh.getRenderingMesh().metadata;
+    const building = Boolean(data?.townTarget);
+    buffer.updateFloat2('townGlass', data?.townGlass ?? 0, Number(building));
+    // Keep front surfaces and contact-shadow depth stable throughout the blend.
+    if (building) engine.setDepthWrite(true);
   }
   getCustomCode(type: string) {
     return type === 'fragment' ? {
-      CUSTOM_FRAGMENT_BEFORE_LIGHTS: 'surfaceAlbedo = mix(surfaceAlbedo, vec3(.48, .53, .55), townGlass * .96);',
-      '!float roughness=reflectivityOut\\.roughness;': 'float roughness=mix(reflectivityOut.roughness, .19, townGlass);',
+      CUSTOM_FRAGMENT_UPDATE_ALPHA: 'alpha *= 1.0 - .7 * townGlass.x;',
+      CUSTOM_FRAGMENT_BEFORE_LIGHTS: 'surfaceAlbedo = mix(surfaceAlbedo, vec3(.48, .53, .55), townGlass.x * .96);',
+      '!float roughness=reflectivityOut\\.roughness;': 'float roughness=mix(reflectivityOut.roughness, .19, townGlass.x);',
+      '!float writeGeometryInfo=finalColor\\.a>ALPHATESTVALUE \\? 1\\.0 : 0\\.0;': 'float writeGeometryInfo=townGlass.y > .5 ? 1.0 : (finalColor.a>ALPHATESTVALUE ? 1.0 : 0.0);',
       CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: `
-        finalEmissive *= 1.0 - townGlass;
+        finalEmissive *= 1.0 - townGlass.x;
         #ifdef SPECULARTERM
-        finalSpecularScaled *= 1.0 + townGlass * .45;
+        finalSpecularScaled *= 1.0 + townGlass.x * .45;
         #endif`,
     } : null;
   }

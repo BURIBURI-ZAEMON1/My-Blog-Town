@@ -8,28 +8,29 @@ import { NullEngine, Scene, ArcRotateCamera, Camera, Vector3, Matrix } from '@ba
 const source = ts.transpileModule(readFileSync('src/scene/brick-town/interaction.ts', 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { buildingVisualState, stepBuildingGlass } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const { targetVisualState, stepGlass } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const post = id => ({ kind: 'post', id });
 const place = id => ({ kind: 'place', id });
-const series = { targets: [post('first'), post('second')] };
-assert.equal(buildingVisualState(series).glass, false);
-assert.equal(buildingVisualState(series, post('second')).glass, false, 'selection must retain the entire series building');
-assert.equal(buildingVisualState(series, undefined, new Set(['second'])).glass, false);
-assert.equal(buildingVisualState(series, place('about')).glass, true);
-assert.equal(buildingVisualState({ targets: [place('about')] }, place('about')).direct, true);
-assert.equal(buildingVisualState({ targets: [place('friend:a')] }, place('friend:a')).glass, false);
-assert.equal(buildingVisualState({ targets: [place('about')] }, undefined, new Set(['first'])).glass, true);
-assert.equal(buildingVisualState(series, undefined, new Set()).glass, true, 'zero results must glass all buildings');
-assert.equal(buildingVisualState(series, place('about'), new Set(['first'])).glass, false, 'hover must preserve matching buildings');
-assert.equal(buildingVisualState({ targets: [place('first')] }, post('first')).glass, true, 'post and place IDs must not collide');
-const partial = stepBuildingGlass(0, 1, .05, false);
+assert.equal(targetVisualState(post('first')).glass, false);
+assert.equal(targetVisualState(post('first'), post('first')).glass, false);
+assert.equal(targetVisualState(post('second'), post('first')).glass, true, 'other articles in the same building must be glass');
+assert.equal(targetVisualState(post('first'), undefined, new Set(['second'])).glass, true, 'a series sibling must not inherit a filter match');
+assert.equal(targetVisualState(post('second'), undefined, new Set(['second'])).glass, false);
+assert.equal(targetVisualState(post('first'), place('about')).glass, true);
+assert.equal(targetVisualState(place('about'), place('about')).direct, true);
+assert.equal(targetVisualState(place('friend:a'), place('friend:a')).glass, false);
+assert.equal(targetVisualState(place('about'), undefined, new Set(['first'])).glass, true);
+assert.equal(targetVisualState(post('first'), undefined, new Set()).glass, true, 'zero results must glass all targets');
+assert.equal(targetVisualState(post('first'), place('about'), new Set(['first'])).glass, false, 'hover must preserve matching floors');
+assert.equal(targetVisualState(place('first'), post('first')).glass, true, 'post and place IDs must not collide');
+const partial = stepGlass(0, 1, .05, false);
 assert(partial > 0 && partial < 1);
-assert(stepBuildingGlass(partial, 0, .016, false) < partial, 'interrupted transitions must reverse from the current amount');
+assert(stepGlass(partial, 0, .016, false) < partial, 'interrupted transitions must reverse from the current amount');
 let settled = 0;
-for (let i = 0; i < 8; i++) settled = stepBuildingGlass(settled, 1, 1 / 30, false);
+for (let i = 0; i < 8; i++) settled = stepGlass(settled, 1, 1 / 30, false);
 assert(settled > .99, 'glass transition did not settle within 270 ms');
-assert.equal(stepBuildingGlass(partial, 0, 0, true), 0);
-console.log('PASS: shared selection, series, empty filters, ID isolation and reversible motion');
+assert.equal(stepGlass(partial, 0, 0, true), 0);
+console.log('PASS: per-floor selection, series sibling filters, empty filters, ID isolation and reversible motion');
 
 const base = process.env.TOWN_BLOG_TEST_URL ?? 'http://127.0.0.1:4321';
 const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || undefined });
@@ -39,6 +40,36 @@ const inspect = page => {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
 };
+function watchGlassRendering() {
+  const shaders = new WeakMap(), programs = new WeakMap(), contexts = new WeakMap();
+  window.townRenderProbe = { pbrLinks: 0, shadowBatches: [] };
+  const state = gl => {
+    if (!contexts.has(gl)) contexts.set(gl, { program: null, framebuffer: null, shadows: 0 });
+    return contexts.get(gl);
+  };
+  for (const Type of [WebGLRenderingContext, WebGL2RenderingContext]) {
+    for (const name of ['shaderSource', 'attachShader', 'linkProgram', 'useProgram', 'bindFramebuffer', 'drawElements', 'drawArrays', 'drawElementsInstanced', 'drawArraysInstanced']) {
+      const original = Type.prototype[name];
+      if (!original) continue;
+      Type.prototype[name] = function (...args) {
+        const current = state(this);
+        if (name === 'shaderSource') shaders.set(args[0], { pbr: args[1].includes('townGlass'), shadow: args[1].includes('biasAndScaleSM') && args[1].includes('vDepthMetricSM') });
+        if (name === 'attachShader') {
+          const before = programs.get(args[0]) ?? {}, next = shaders.get(args[1]) ?? {};
+          programs.set(args[0], { pbr: before.pbr || next.pbr, shadow: before.shadow || next.shadow });
+        }
+        if (name === 'linkProgram' && programs.get(args[0])?.pbr) window.townRenderProbe.pbrLinks++;
+        if (name === 'useProgram') current.program = args[0];
+        if (name === 'bindFramebuffer' && args[0] !== this.READ_FRAMEBUFFER && current.framebuffer !== args[1]) {
+          if (current.shadows) window.townRenderProbe.shadowBatches.push(current.shadows);
+          current.shadows = 0; current.framebuffer = args[1];
+        }
+        if (name.startsWith('draw') && programs.get(current.program)?.shadow) current.shadows++;
+        return original.apply(this, args);
+      };
+    }
+  }
+}
 async function ready(page) {
   await page.waitForFunction(() => document.querySelector('canvas')?.dataset.effectsReady === 'true', null, { timeout: 60000 });
   await page.locator('.site-entry').waitFor({ state: 'hidden', timeout: 60000 });
@@ -67,8 +98,10 @@ async function tapBuilding(page, point, title) {
   assert.fail(`could not tap ${title}`);
 }
 try {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'no-preference', colorScheme: 'light' });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'no-preference', colorScheme: 'light', timezoneId: 'Asia/Shanghai' });
   const page = await context.newPage(); inspect(page);
+  await page.addInitScript(watchGlassRendering);
+  await page.clock.setFixedTime(new Date('2026-06-15T12:00:00+08:00'));
   let bodyMatchId;
   await page.route('**/data/search-index.json', async route => {
     const response = await route.fetch();
@@ -83,11 +116,32 @@ try {
   const search = page.getByRole('textbox', { name: '搜索文章', exact: true });
   const total = +(await page.locator('canvas').getAttribute('data-solid-buildings'));
   const geometry = await page.locator('canvas').evaluate(el => [el.dataset.sceneMeshes, el.dataset.sceneMaterials]);
+  const series = await page.locator('astro-island').first().evaluate(el => {
+    const unpack = ([type, value]) => type === 1 ? value.map(unpack) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, unpack(entry)])) : value;
+    return unpack(JSON.parse(el.getAttribute('props')).layout).plots.find(plot => plot.seriesPostIds?.length > 1).seriesPostIds;
+  });
+  await page.waitForTimeout(600);
+  const renderBefore = await page.evaluate(() => ({ links: window.townRenderProbe.pbrLinks, shadowDraws: window.townRenderProbe.shadowBatches.at(-1) }));
+  assert(renderBefore.links > 0 && renderBefore.shadowDraws > 0, 'GPU regression probe did not observe PBR shaders and shadow draws');
+  await page.locator('.desktop-sidebar-nav button').filter({ hasText: '列表' }).click();
+  await page.locator(`.sidebar-post[href="/posts/${series[0]}/"]`).hover();
+  await state(page, { solidTargets: `post:${series[0]}`, glassBuildings: total - 1 });
+  assert((await page.locator('canvas').getAttribute('data-glass-targets')).split(',').includes(`post:${series[1]}`), 'same-building sibling floor stayed solid');
+  assert.equal(await page.evaluate(() => window.townRenderProbe.shadowBatches.at(-1)), renderBefore.shadowDraws, 'glass floors stopped casting their shadows');
+  await page.screenshot({ path: '/tmp/town-glass-series-floor.png' });
+  await page.locator(`.sidebar-post[href="/posts/${series[1]}/"]`).hover();
+  await state(page, { solidTargets: `post:${series[1]}` });
+  assert((await page.locator('canvas').getAttribute('data-glass-targets')).split(',').includes(`post:${series[0]}`));
+  await page.locator('.desktop-sidebar-nav button').filter({ hasText: '名片' }).click();
   await page.locator('.profile-avatar-link').hover();
   await state(page, { focusTarget: 'place:about', solidBuildings: 1, glassBuildings: total - 1 });
   await page.screenshot({ path: '/tmp/town-glass-desktop.png' });
   await page.locator('.top-wordmark').hover();
   await state(page, { focusTarget: '', solidBuildings: total, glassBuildings: 0 });
+  const renderAfter = await page.evaluate(() => ({ links: window.townRenderProbe.pbrLinks, shadowDraws: window.townRenderProbe.shadowBatches.at(-1) }));
+  assert.equal(renderAfter.links, renderBefore.links, 'selecting or clearing recompiled building shaders');
+  assert.equal(renderAfter.shadowDraws, renderBefore.shadowDraws, 'glass buildings dropped out of the shadow pass');
+  console.log('PASS: series floors select independently; selection/clear keep PBR programs and shadow draws stable', renderAfter);
   assert.deepEqual(await page.locator('canvas').evaluate(el => [el.dataset.sceneMeshes, el.dataset.sceneMaterials]), geometry, 'selection duplicated scene geometry or materials');
   await page.locator('.desktop-sidebar-nav button').filter({ hasText: '友邻' }).click();
   await page.locator('.friend-row').first().hover();
