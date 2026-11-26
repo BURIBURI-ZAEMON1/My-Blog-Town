@@ -68,4 +68,5 @@ export const friendLinks: FriendLink[] = [
   { id: 'diamond-boy', nickname: 'Diamond boy', avatar: '/assets/friends/Diamond_boy.jpeg', url: 'https://blog.stargazer-luciddream.top' },
   { id: 'true', nickname: '十且八', avatar: '/assets/friends/true.jpeg', url: 'https://sqbtt.cn' },
   { id: 'H2SO4', nickname: 'H2SO4', avatar: '/assets/friends/H2SO4.jpeg', url: 'https://h2so4.site' },
+  { id: 'CanL', nickname: 'CanL', avatar: '/assets/friends/CanL.jpeg', url: 'https://www.canl-blog.top' },
 ];
