@@ -83,8 +83,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   const clampZoom=(value:number)=>Math.max(0.75,Math.min(2.6,value));
   let zoom=clampZoom(saved?.zoom??defaultZoom);
   const getCameraPose=():TownCameraPose=>({x:camera.target.x,y:camera.target.y,z:camera.target.z,zoom});
-  const edgeState=townEdgeState(scene);
-  edgeState.close=0;edgeState.lift=initial.reducedMotion?0:1;
+  const edgeState=window.matchMedia('(max-width: 720px)').matches?undefined:townEdgeState(scene);
   const clampCameraTarget=()=>{
     const panBounds=getCameraPanBounds(
       townTerrainBounds,camera.alpha,camera.beta,
@@ -121,7 +120,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   shadows.bias=0.00012;shadows.normalBias=0.018;
   // Cache the static town shadow map; refresh for solar movement and transitions.
   shadows.getShadowMap()!.refreshRate=0;
-  configureTownEdgeShadows(shadows,scene);
+  if(edgeState)configureTownEdgeShadows(shadows,scene);
   const worldStarted=performance.now();
   const world=buildWorld(scene,layout,mobile);
   canvas.dataset.worldBuildMs=String(Math.round(performance.now()-worldStarted));
@@ -136,7 +135,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   ];
   const placeById=new Map(places.map(place=>[place.id,place]));
   const placeMeshes=places.flatMap(place=>place.meshes);
-  edgeState.field=new TownEdgeField([
+  if(edgeState)edgeState.field=new TownEdgeField([
     ...world.decor.map(p=>({x:p.x,z:p.z,width:p.radius*2+.8,depth:p.radius*2+.8})),
     ...layout.entities.map(p=>({...p,width:p.width+.8,depth:p.depth+.8})),
     ...houses.map(h=>({...h.plot,width:h.plot.width+.8,depth:h.plot.depth+.8})),
@@ -242,8 +241,10 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     hemi.intensity=light.sky+cloud*day*.13;
     scene.imageProcessingConfiguration.exposure=light.exposure-cloud*day*.08;
     shadows.setDarkness(1-daylightStep(0,.18,sun.intensity)*.95);
-    edgeState.sunRay=[sun.direction.x,sun.direction.y,sun.direction.z];
-    edgeState.cloudStrength=mobile?0:.4*daylightStep(0,.5,sun.intensity);
+    if(edgeState){
+      edgeState.sunRay=[sun.direction.x,sun.direction.y,sun.direction.z];
+      edgeState.cloudStrength=mobile?0:.4*daylightStep(0,.5,sun.intensity);
+    }
     if(sun.intensity>.001&&!sun.direction.equalsWithEpsilon(shadowDirection,.000001)){
       shadows.getShadowMap()?.resetRefreshCounter();shadowDirection.copyFrom(sun.direction);
     }
@@ -324,7 +325,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   let focusFlight: { from: TownCameraPose; to: Vector3; started:number; onComplete:()=>void; onCancel?:()=>void } | undefined;
   function cancelFocus(){if(!focusFlight)return;const cancel=focusFlight.onCancel;focusFlight=undefined;delete canvas.dataset.focusPost;delete canvas.dataset.focusProgress;cancel?.();}
   function focusTarget(id:string,to:Vector3,onComplete:()=>void,onCancel?:()=>void){
-    if(disposed||!inView||!visible||!firstFramePublished)return false;
+    if(disposed||!inView||!visible||!firstFramePublished||state.reducedMotion)return false;
     cancelFocus();
     focusFlight={from:getCameraPose(),to,started:performance.now(),onComplete,onCancel};
     canvas.dataset.focusPost=id;canvas.dataset.focusProgress='0';
@@ -334,14 +335,12 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   }
   function focusPost(id:string,onComplete:()=>void){
     const house=houseByPostId.get(id);
-    if(window.matchMedia('(max-width: 720px)').matches||state.reducedMotion||!house)return false;
+    if(!house)return false;
     return focusTarget(id,new Vector3(house.plot.x,GROUND_Y+house.ids.length*FLOOR_HEIGHT*.5,house.plot.z),onComplete);
   }
   function focusPlace(id:string,onComplete:()=>void,onCancel?:()=>void){
     const place=placeById.get(id);if(!place)return false;
-    const to=new Vector3(place.x,GROUND_Y+place.anchorY*.5,place.z);
-    if(state.reducedMotion||mobile){applyZoom(Math.max(zoom,2.35));camera.target.copyFrom(to);requestDraw();onComplete();return true;}
-    return focusTarget(id,to,onComplete,onCancel);
+    return focusTarget(id,new Vector3(place.x,GROUND_Y+place.anchorY*.5,place.z),onComplete,onCancel);
   }
   function pick(event:PointerEvent){
     const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;
@@ -446,17 +445,17 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
   const resize=new ResizeObserver(()=>{fit(true);if(state.hoveredPostId)anchor(state.hoveredPostId);});resize.observe(canvas.parentElement!);
   let lastDiagnostics=0,slowRenderFrames=0,firstFramePublished=false,lastRotorShadow=0;
   let edgeHighlightSignature='';
-  const edgeTransform=Matrix.Zero();
+  const viewTransform=Matrix.Zero();
   let edgeZoom=zoom,edgeInitialized=false,edgeWasReduced=state.reducedMotion;
   let restoreEdge: ((transform: Matrix) => boolean) | undefined;
   function captureReturnView(pose:TownCameraPose){
-    const projection=edgeTransform.clone(), restoreFootprint=edgeState.field.saveFootprint();
+    const projection=edgeState&&viewTransform.clone(), restoreFootprint=edgeState?.field.saveFootprint();
     return ()=>{
       applyZoom(pose.zoom);
       camera.target.set(pose.x,pose.y,pose.z);
       clampCameraTarget();
       delete canvas.dataset.focusPost;delete canvas.dataset.focusProgress;
-      restoreEdge=(transform)=>{
+      if(projection&&restoreFootprint)restoreEdge=(transform)=>{
         if(!transform.m.every((value,i)=>Math.abs(value-projection.m[i])<1e-6))return false;
         restoreFootprint();return true;
       };
@@ -467,15 +466,15 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
     canvas.dataset.ready='true';canvas.dataset.frames=String(frames);canvas.dataset.weather=rainy?weather.kind:'clear';canvas.dataset.season=state.season;canvas.dataset.colorMode=state.colorMode;canvas.dataset.reducedMotion=String(state.reducedMotion);canvas.dataset.seasonChanges=String(seasonChanges);canvas.dataset.seasonCover=String(seasons.coverCount);canvas.dataset.seasonTransition=String(seasons.transitioning);canvas.dataset.precipitationAnimated=String(weather.animated);canvas.dataset.renderer=engine.webGLVersion===2?'webgl2':'webgl1';
     canvas.dataset.cameraX=camera.target.x.toFixed(2);canvas.dataset.cameraY=camera.target.y.toFixed(2);canvas.dataset.cameraZ=camera.target.z.toFixed(2);canvas.dataset.zoom=zoom.toFixed(3);canvas.dataset.rainDrops=String(weather.count);
     canvas.dataset.sceneMeshes=String(scene.meshes.length);canvas.dataset.sceneMaterials=String(scene.materials.length);canvas.dataset.sceneVertices=String(scene.getTotalVertices());canvas.dataset.thinInstances=String(scene.meshes.reduce((sum,mesh)=>sum+('thinInstanceCount' in mesh?Number(mesh.thinInstanceCount):0),0));lastDiagnostics=now;
-    canvas.dataset.edgeReveal=edgeState.close.toFixed(3);
-    canvas.dataset.edgeAnimating=String(edgeState.field.animating);
+    canvas.dataset.edgeReveal=edgeState?edgeCloseAmount(zoom,defaultZoom).toFixed(3):'0.000';
+    canvas.dataset.edgeAnimating=String(edgeState?.field.animating??false);
     canvas.dataset.solarHour=light.hour.toFixed(3);canvas.dataset.townNight=String(townNight);
     canvas.dataset.sunDirection=sun.direction.asArray().map(v=>v.toFixed(4)).join(',');canvas.dataset.sunIntensity=sun.intensity.toFixed(4);
     canvas.dataset.skyIntensity=hemi.intensity.toFixed(4);canvas.dataset.windowLight=light.night.toFixed(4);
     canvas.dataset.cloud=light.cloud.toFixed(4);canvas.dataset.lightTransition=String(now<lightUntil);
     canvas.dataset.lightCount=String(scene.lights.length);canvas.dataset.canvasBackground=scene.clearColor.toHexString();
     canvas.dataset.studioReflections=String(!!scene.environmentTexture);canvas.dataset.cloudShadows=mobile?'off':'on';
-    canvas.dataset.cloudShadowStrength=edgeState.cloudStrength.toFixed(3);
+    canvas.dataset.cloudShadowStrength=(edgeState?.cloudStrength??0).toFixed(3);
   }
   function render(){
     if(disposed||!inView||!visible)return;
@@ -491,32 +490,36 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
       canvas.dataset.focusProgress=String(Math.min(1,age/ARTICLE_FOCUS_MS));
       if(age>=ARTICLE_FOCUS_MS){completedFocus=focusFlight.onComplete;focusFlight=undefined;}
     }
-    edgeState.close=edgeCloseAmount(zoom,defaultZoom);
-    edgeState.lift=state.reducedMotion?0:1;
-    // Keep the portrait landing compact; blend back to the distant footprint.
-    const portraitEdge=mobile&&canvas.clientHeight>canvas.clientWidth?Math.max(0,Math.min(1,(zoom/defaultZoom-.75)/.25)):0;
-    edgeState.inset=mobile?.065-.03*portraitEdge:0;
     scene.updateTransformMatrix();
     const transform=scene.getTransformMatrix();
-    const edgeRevision=edgeState.field.revision;
-    // Advance existing motion before assigning new targets, so the elapsed
-    // time before a zoom cannot consume its entire retreat on the first frame.
-    let edgeMoved=!restoreEdge&&edgeState.field.tick(Math.min(.05,frameSeconds),state.reducedMotion);
-    const edgeChanged=!!restoreEdge||!edgeInitialized||edgeZoom!==zoom||!transform.equals(edgeTransform);
-    if(edgeChanged){
-      if(!restoreEdge?.(transform)){
-        // If the projection changed while away, fit its new footprint before drawing.
-        const initial=!edgeInitialized||!!restoreEdge;
-        edgeState.field.retarget(transform.m,edgeState.inset,zoom!==edgeZoom,state.reducedMotion||initial,initial,!initial&&zoom>edgeZoom,[1-.08*portraitEdge,1+.12*portraitEdge]);
+    const viewChanged=!transform.equals(viewTransform);
+    let edgeMoved=false;
+    if(edgeState){
+      edgeState.lift=state.reducedMotion?0:1;
+      edgeState.cloudTime=state.reducedMotion?0:elapsed;
+      const edgeRevision=edgeState.field.revision;
+      // Advance existing motion before assigning new targets, so the elapsed
+      // time before a zoom cannot consume its entire retreat on the first frame.
+      edgeMoved=!restoreEdge&&edgeState.field.tick(dt,state.reducedMotion);
+      if(restoreEdge||!edgeInitialized||edgeZoom!==zoom||viewChanged){
+        if(!restoreEdge?.(transform)){
+          // If the projection changed while away, fit its new footprint before drawing.
+          const initial=!edgeInitialized||!!restoreEdge;
+          const portrait=mobile&&canvas.clientHeight>canvas.clientWidth?Math.max(0,Math.min(1,(zoom/defaultZoom-.75)/.25)):0;
+          edgeState.field.retarget(transform.m,mobile?.065-.03*portrait:0,zoom!==edgeZoom,state.reducedMotion||initial,initial,!initial&&zoom>edgeZoom,[1-.08*portrait,1+.12*portrait]);
+        }
+        restoreEdge=undefined;
+        edgeZoom=zoom;edgeInitialized=true;
+        edgeMoved=edgeState.field.tick(0,state.reducedMotion)||edgeMoved;
       }
-      restoreEdge=undefined;
-      edgeTransform.copyFrom(transform);edgeZoom=zoom;edgeInitialized=true;
-      edgeMoved=edgeState.field.tick(0,state.reducedMotion)||edgeMoved;
+      if(edgeRevision!==edgeState.field.revision){
+        edgeMoved=true;edgeState.texture.update(edgeState.field.data);shadows.getShadowMap()?.resetRefreshCounter();
+      }
+      if(edgeWasReduced!==state.reducedMotion){edgeWasReduced=state.reducedMotion;shadows.getShadowMap()?.resetRefreshCounter();}
+      const edgeHighlights=houses.map(house=>Number(worldEdgeVisibility(scene,house.plot.x,0,house.plot.z)>.01)).join('');
+      if(edgeHighlights!==edgeHighlightSignature){edgeHighlightSignature=edgeHighlights;highlightSignature='';if(effectsReady)update(state);}
     }
-    if(edgeRevision!==edgeState.field.revision){edgeState.texture.update(edgeState.field.data);shadows.getShadowMap()?.resetRefreshCounter();}
-    if(edgeWasReduced!==state.reducedMotion){edgeWasReduced=state.reducedMotion;shadows.getShadowMap()?.resetRefreshCounter();}
-    const edgeHighlights=houses.map(house=>Number(worldEdgeVisibility(scene,house.plot.x,0,house.plot.z)>.01)).join('');
-    if(edgeHighlights!==edgeHighlightSignature){edgeHighlightSignature=edgeHighlights;highlightSignature='';if(effectsReady)update(state);}
+    if(viewChanged)viewTransform.copyFrom(transform);
     const slot=Math.floor(Date.now()/900000);
     if(slot!==weatherSlot){weatherSlot=slot;rainy=weatherIsPrecipitating(layout.seed,slot);lighting();considerNightVisitor();}
     if(Math.abs(Date.now()-lightClock)>=1000)lighting();
@@ -539,9 +542,8 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
       for(const m of f.meshes)m.visibility=opacity;
     });
     weather.tick(dt);seasons.tick(dt,state.reducedMotion);
-    edgeState.cloudTime=state.reducedMotion?0:elapsed;
     if(state.season!=='winter')for(const m of world.glints)m.visibility=daylightStep(.05,.8,sun.intensity)*(state.reducedMotion?.65:.65+Math.sin(elapsed*1.5)*.15);
-    if(state.hoveredPlaceId&&edgeChanged)anchorPlace(state.hoveredPlaceId);
+    if(state.hoveredPlaceId&&viewChanged)anchorPlace(state.hoveredPlaceId);
     const renderStarted=performance.now();scene.render();const renderCost=performance.now()-renderStarted;frames++;
     const noticeFrame=postNotices.project(state.newPostIds, state.guidePostId, canvas.clientWidth, canvas.clientHeight);
     if(noticeFrame)callbacks().onResolveNewPostAnchors?.(noticeFrame);
@@ -554,7 +556,7 @@ export function mountBrickTown(canvas:HTMLCanvasElement,layout:TownLayout,posts:
       window.setTimeout(()=>{void initVisualEffects();},mobile?350:0);
     }
     if(ao&&renderCost>55){slowRenderFrames++;if(slowRenderFrames>=4){ao.dispose();ao=undefined;canvas.dataset.adaptiveAo='off';}}else slowRenderFrames=Math.max(0,slowRenderFrames-1);
-    if(frames===1||focusFlight||completedFocus||edgeChanged||edgeMoved||now-lastDiagnostics>500)publishDiagnostics(now);
+    if(frames===1||focusFlight||completedFocus||viewChanged||edgeMoved||now-lastDiagnostics>500)publishDiagnostics(now);
     completedFocus?.();
     if(state.reducedMotion&&--renderBurst<=0&&now>=lightUntil&&firstFramePublished&&effectsReady&&scene.isReady()&&engine.areAllEffectsReady()){
       engine.stopRenderLoop(render);canvas.dataset.renderLoop='idle';publishDiagnostics(now);

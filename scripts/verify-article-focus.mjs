@@ -35,7 +35,7 @@ try {
     await page.locator('.desktop-sidebar-nav button').filter({ hasText: '列表' }).click();
     return page.locator('.sidebar-post');
   };
-  const observe = () => page.evaluate(() => {
+  const observe = (tab = page) => tab.evaluate(() => {
     const canvas = document.querySelector('.brick-town-host canvas');
     window.flight = { start: 0, samples: [], fetches: [], arrived: 0, focused: false, canvas };
     if (!window.originalFetch) {
@@ -56,7 +56,7 @@ try {
     const observer = new MutationObserver(sample);
     observer.observe(document.querySelector('.main-scroll'), { attributes: true, childList: true, subtree: true });
   });
-  const result = () => page.evaluate(() => ({
+  const result = (tab = page) => tab.evaluate(() => ({
     elapsed: window.flight.arrived - window.flight.start,
     samples: window.flight.samples,
     concurrentFetch: window.flight.fetches.some(request => request.town && request.at <= window.flight.start),
@@ -261,6 +261,35 @@ try {
   assert.equal(await phone.locator('canvas[data-focus-post]').count(), 0);
   await phone.setViewportSize({ width: 430, height: 820 });
   await backToTown(phone, phoneDeparture);
+  await phone.locator('.main-scroll').evaluate(el => { el.scrollTop = 0; });
+  await phoneCanvas.dispatchEvent('wheel', { deltaY: 900 });
+  await phone.waitForFunction(zoom => +document.querySelector('canvas').dataset.zoom < zoom, +phoneDeparture[3]);
+  const mobileBuildingDeparture = await camera(phone);
+  const mobileBuildingBox = await phoneCanvas.boundingBox();
+  const anchor = await phone.locator('.town-new-post-anchor').first().evaluate(el => ({ x: +el.getAttribute('cx'), y: +el.getAttribute('cy') }));
+  let tappedBuilding;
+  for (const offset of [0, 6, 12, 18, 24]) {
+    const x = mobileBuildingBox.x + anchor.x, y = mobileBuildingBox.y + anchor.y + offset;
+    await phone.mouse.move(x, y);
+    await phone.waitForTimeout(50);
+    if (await phone.locator('.town-tooltip:not(.town-place-tooltip) strong').count()) {
+      await phone.touchscreen.tap(x, y); tappedBuilding = true; break;
+    }
+  }
+  assert(tappedBuilding, 'could not pick a mobile article building');
+  const preview = phone.locator('.touch-preview-read');
+  await preview.waitFor();
+  assert.equal(new URL(phone.url()).pathname, '/');
+  assert.equal(await phone.locator('canvas[data-focus-post]').count(), 0, 'first tap moved the camera');
+  await observe(phone);
+  await preview.tap();
+  await phone.locator('.article-body').waitFor();
+  const mobileFlight = await result(phone);
+  assert.equal(mobileFlight.final.focusDurationMs, '760');
+  assert.equal(mobileFlight.final.focusProgress, '1');
+  assert.equal(mobileFlight.final.zoom, '2.350');
+  assert.equal(mobileFlight.final.edgeAnimating, 'false');
+  await backToTown(phone, mobileBuildingDeparture);
   await mobile.close();
   assert.deepEqual(errors, []);
   console.log('PASS: desktop and mobile restore the pre-click camera on the first frame; forward navigation updates it and the main town link starts fresh.');

@@ -394,7 +394,7 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
   };
   const focusPlace = () => {
     const entry = pendingPlace.current;
-    if (entry) townSceneRef.current?.focusPlace(entry.id, finishPlace, cancelPlace);
+    if (entry && !townSceneRef.current?.focusPlace(entry.id, finishPlace, cancelPlace)) finishPlace();
   };
   const selectPlace = (id: string) => {
     if (id === 'about' && surface === 'about') { setMobileSidebarOpen(false); return; }
@@ -410,19 +410,19 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     setMobileSidebarOpen(false);
     setHoveredPlaceId(undefined);
     setPlaceAnchor(undefined);
-    if (!fromTown || window.matchMedia('(max-width: 720px), (prefers-reduced-motion: reduce)').matches) { finishPlace(); return; }
+    if (!fromTown || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { finishPlace(); return; }
     mainSurfaceRef.current?.scrollTo({ top: 0, behavior: 'instant' });
     window.requestAnimationFrame(() => { if (pendingPlace.current === entry) focusPlace(); });
   };
 
   const navigate = (nextSurface: MainSurface, postId?: string) => {
+    navigateTo(nextSurface, postId);
     cancelPlace();
     townSceneRef.current?.cancelFocus();
     setMobileSidebarOpen(false);
     setTouchTarget(undefined);
     setSearchOpen(false);
     inputRef.current?.blur();
-    navigateTo(nextSurface, postId);
     pendingArticle.current = undefined;
   };
 
@@ -436,17 +436,26 @@ export default function TownBlogApp({ posts, layout, initialSurface = 'town', in
     setPreviewTag(undefined);
     setHoveredPostId(undefined);
     setHoverAnchor(undefined);
+    setMobileSidebarOpen(false);
+    setTouchTarget(undefined);
     setSearchOpen(false);
     inputRef.current?.blur();
     pendingArticle.current = entry;
     const enter = () => { if (pendingArticle.current === entry) navigate('article', id); };
-    if (fromTown && !window.matchMedia('(max-width: 720px), (prefers-reduced-motion: reduce)').matches && townSceneRef.current?.focusPost(id, enter)) return;
+    if (fromTown && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && townSceneRef.current?.focusPost(id, enter)) return;
     enter();
   };
 
   useEffect(() => {
-    if ((isMobile || reducedMotion) && pendingArticle.current) navigate('article', pendingArticle.current.id);
-  }, [isMobile, reducedMotion]);
+    if (!reducedMotion) return;
+    const place = pendingPlace.current;
+    if (place) {
+      townSceneRef.current?.cancelFocus();
+      pendingPlace.current = place;
+      finishPlace();
+    }
+    else if (pendingArticle.current) navigate('article', pendingArticle.current.id);
+  }, [reducedMotion]);
 
   const chooseCategory = (category?: string) => {
     setPreviewCategory(undefined);

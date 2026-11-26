@@ -80,9 +80,17 @@ async function clickModel(page, point, name) {
   const p = await modelPoint(page, point, name);
   await page.mouse.click(p.x, p.y);
 }
+function observePopups() {
+  const open = window.open;
+  window.open = function (...args) {
+    if (window.placeFlight) window.placeFlight.atOpen = { ...window.placeFlight.canvas.dataset };
+    return open.apply(this, args);
+  };
+}
 try {
   const context = await browser.newContext({ viewport: { width: 1100, height: 760 } });
   await context.addInitScript(() => sessionStorage.setItem('town:entered', 'true'));
+  await context.addInitScript(observePopups);
   const page = await context.newPage();
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -92,11 +100,6 @@ try {
     history.pushState = function (...args) {
       window.placeRoutes.push(new URL(args[2], location.href).pathname);
       return pushState.apply(this, args);
-    };
-    const open = window.open;
-    window.open = function (...args) {
-      if (window.placeFlight) window.placeFlight.atOpen = { ...window.placeFlight.canvas.dataset };
-      return open.apply(this, args);
     };
   });
   await page.goto(`${base}/posts/`);
@@ -171,7 +174,16 @@ try {
   await page.goBack(); await ready(page);
   assert.deepEqual(await camera(page), aboutDeparture, 'About returned to the wrong camera pose');
   await page.goForward(); await page.locator('.about-page').waitFor();
-  console.log('PASS: About plays the windmill flight, disposes the scene, and restores the departure camera on back');
+  const desktopNav = page.locator('.desktop-top-links');
+  await desktopNav.locator('a[href="/"]').click(); await ready(page);
+  assert.deepEqual(await camera(page), aboutDeparture, 'town link from About reset the camera');
+  await desktopNav.locator('a[href="/posts/"]').click(); await page.locator('.archive-page').waitFor();
+  await page.goBack(); await ready(page);
+  assert.deepEqual(await camera(page), aboutDeparture, 'browser back from Archive reset the camera');
+  await desktopNav.locator('a[href="/posts/"]').click(); await page.locator('.archive-page').waitFor();
+  await desktopNav.locator('a[href="/"]').click(); await ready(page);
+  assert.deepEqual(await camera(page), aboutDeparture, 'town link from Archive reset the camera');
+  console.log('PASS: About and Archive restore the camera via browser back and the town link');
 
   // About from archive must skip the town entirely.
   await page.locator('.desktop-top-links a[href="/posts/"]').click();
@@ -257,6 +269,7 @@ try {
 
   const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await mobile.addInitScript(() => sessionStorage.setItem('town:entered', 'true'));
+  await mobile.addInitScript(observePopups);
   const phone = await mobile.newPage(); phone.on('pageerror', error => errors.push(error.message));
   phone.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await phone.goto(`${base}/posts/`);
@@ -295,8 +308,10 @@ try {
   await phone.waitForFunction(zoom => document.querySelector('canvas').dataset.zoom !== zoom, mobileZoom);
   const mobileDeparture = await camera(phone);
   await phone.getByRole('button', { name: '打开侧边栏', exact: true }).click();
+  await observe(phone);
   await mobileNav.locator('a[href="/about/"]').click();
   await phone.locator('.about-page').waitFor();
+  assertArrival(await flightResult(phone), 'about');
   await phone.goBack(); await ready(phone);
   assert.deepEqual(await camera(phone), mobileDeparture, 'mobile About returned to the wrong camera pose');
   const windmill = await modelPoint(phone, { x: 0, y: 1.2, z: 0 }, '关于');
@@ -309,8 +324,11 @@ try {
   await tapWindmill();
   await phone.locator('.town-touch-preview strong').filter({ hasText: '关于' }).waitFor();
   assert.equal(new URL(phone.url()).pathname, '/', 'closing the preview did not reset the first tap');
+  assert.equal(await phone.locator('canvas[data-focus-post]').count(), 0, 'preview started a flight');
+  await observe(phone);
   await tapWindmill();
   await phone.waitForURL('**/about/');
+  assertArrival(await flightResult(phone), 'about');
   await phone.goBack(); await ready(phone);
   // Zoom out so the outer friend ring is visible on a narrow canvas.
   await phone.locator('canvas').dispatchEvent('wheel', { deltaY: 900 });
@@ -334,14 +352,21 @@ try {
   await phone.locator('.town-touch-preview strong').filter({ hasText: friendName }).waitFor();
   assert.equal(mobile.pages().length, 1, 'first friend tap opened a tab instead of previewing');
   assert.equal(await phone.locator('.town-touch-preview a').count(), 0, 'friend preview added an unwanted visit link');
+  assert.equal(await phone.locator('canvas[data-focus-post]').count(), 0, 'preview started a flight');
   await phone.screenshot({ path: '/tmp/town-touch-friend.png' });
+  const mobileFriendDeparture = await camera(phone);
+  await observe(phone);
   popupPromise = phone.waitForEvent('popup');
   await tapFriend();
   popup = await popupPromise;
   await popup.getByRole('heading', { name: 'Mobile friend reached' }).waitFor();
   assert.equal(new URL(phone.url()).pathname, '/');
   assert.equal(await phone.locator('.town-touch-preview').count(), 0, 'friend preview stayed selected after opening');
+  const mobileFriendFlight = await flightResult(phone, true);
+  assertArrival(mobileFriendFlight, friendId);
+  assert(mobileFriendFlight.samples.every(frame => frame.edgeAnimating === 'false'), 'mobile flight animated the edge');
   await popup.close();
+  await assertFriendReturn(phone, mobileFriendDeparture);
   console.log('PASS: mobile windmill/friend meshes preview on first tap and navigate on second; close resets the preview and friends open in a new tab');
   await mobile.close();
   assert.deepEqual(errors, []);

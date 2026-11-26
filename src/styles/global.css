@@ -152,11 +152,8 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .profile-panel { display: flex; flex-direction: column; align-items: flex-start; }
 .profile-avatar { width: 76px; height: 76px; margin-bottom: 15px; border: 1px solid var(--line-strong); border-radius: 50%; object-fit: cover; box-shadow: 5px 6px 0 rgba(74, 64, 44, .08); }
 .profile-headline { margin: 2px 0 7px; color: var(--sage); font-family: var(--serif); font-size: 11px; font-weight: 600; }
-.profile-links { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, 31px); gap: 8px; max-height: 148px; margin-top: 15px; padding: 13px 4px 2px 0; overflow-x: hidden; overflow-y: auto; border-top: 1px solid var(--line); scrollbar-width: thin; scrollbar-color: rgba(150,133,96,.55) transparent; }
+.profile-links { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, 31px); gap: 8px; margin-top: 15px; padding: 13px 4px 2px 0; border-top: 1px solid var(--line); }
 .profile-links a { display: inline-flex; align-items: center; justify-content: center; width: 31px; height: 31px; padding: 0; border: 1px solid var(--line); border-radius: 7px; background: rgba(255,255,255,.38); color: #6c776c; text-decoration: none; font-family: var(--mono); font-size: 8px; }
-.profile-links::-webkit-scrollbar { width: 6px; }
-.profile-links::-webkit-scrollbar-track { background: transparent; }
-.profile-links::-webkit-scrollbar-thumb { border-radius: 6px; background: rgba(150,133,96,.55); }
 .profile-links a:hover { border-color: var(--line-strong); background: rgba(255,255,255,.72); color: var(--ink); }
 .profile-link-logo { display: block; width: 17px; height: 17px; object-fit: contain; }
 .friend-avatar { overflow: hidden; }
@@ -1543,7 +1540,7 @@ body { font-family: var(--sans); }
 .sidebar-content-scroll .profile-panel { min-height: 0; }
 .sidebar-content-scroll .sidebar-posts { max-height: none; overflow: visible; }
 .sidebar-content-scroll.is-profile { display: flex; flex-direction: column; }
-.sidebar-content-scroll.is-profile .profile-panel { margin-top: auto; }
+.sidebar-content-scroll.is-profile .profile-panel { flex: 0 0 auto; margin-top: auto; }
 
 .topnav { grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 16px; padding-inline: clamp(24px, 4vw, 52px); }
 .top-wordmark { text-transform: uppercase; }
