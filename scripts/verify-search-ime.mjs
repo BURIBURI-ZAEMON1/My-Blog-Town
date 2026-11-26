@@ -14,6 +14,7 @@ try {
     await page.waitForFunction(() => !document.querySelector('astro-island[ssr]'));
     if (width < 720) await page.getByRole('button', { name: '打开搜索' }).click();
     const input = page.getByRole('textbox', { name: '搜索文章' });
+    await input.click();
     await input.fill(query);
     const firstResult = page.locator('.search-result').first();
     await firstResult.waitFor({ state: 'visible' });
